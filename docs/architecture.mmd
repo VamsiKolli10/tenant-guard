@@ -1,0 +1,9 @@
+flowchart LR
+  User[User / Admin] --> UI[Next.js App Router]
+  UI -->|Credentials| Auth[NextAuth + JWT Session]
+  UI --> API[Route Handlers + Server Actions]
+  API --> Services[Service Layer]
+  Services --> Prisma[Prisma Client]
+  Prisma --> DB[(Postgres)]
+  Services --> Audit[Audit Log Writer]
+  Audit --> DB
