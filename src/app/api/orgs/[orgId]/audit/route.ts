@@ -6,7 +6,7 @@ import { getSessionUserId } from "@/server/session";
 import { auditService } from "@/services/audit";
 
 type Params = {
-  params: { orgId: string };
+  params: Promise<{ orgId: string }>;
 };
 
 const querySchema = z.object({
@@ -15,6 +15,7 @@ const querySchema = z.object({
 });
 
 export async function GET(req: Request, { params }: Params) {
+  const { orgId } = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return jsonError("Unauthorized.", 401);
@@ -31,7 +32,7 @@ export async function GET(req: Request, { params }: Params) {
 
   try {
     const logs = await auditService.list({
-      orgId: params.orgId,
+      orgId,
       userId,
       cursor: parsed.data.cursor,
       limit: parsed.data.limit,

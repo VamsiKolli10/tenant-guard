@@ -4,10 +4,11 @@ import { getSessionUserId } from "@/server/session";
 import { inviteService } from "@/services/invitations";
 
 type Params = {
-  params: { orgId: string; inviteId: string };
+  params: Promise<{ orgId: string; inviteId: string }>;
 };
 
 export async function POST(_: Request, { params }: Params) {
+  const { orgId, inviteId } = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return jsonError("Unauthorized.", 401);
@@ -15,9 +16,9 @@ export async function POST(_: Request, { params }: Params) {
 
   try {
     const invitation = await inviteService.revokeInvite({
-      orgId: params.orgId,
+      orgId,
       actorUserId: userId,
-      inviteId: params.inviteId,
+      inviteId,
     });
 
     return jsonOk(invitation);

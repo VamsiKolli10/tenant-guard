@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { InvitePanel } from "@/components/invite-panel";
+import { AuthorizationError } from "@/server/errors";
 import { getSessionUserId } from "@/server/session";
 import { membershipService } from "@/services/memberships";
 import { orgService } from "@/services/organizations";
@@ -14,6 +15,29 @@ type PageProps = {
   searchParams: Record<string, string | string[] | undefined>;
 };
 
+function normalizeReturnTo(orgId: string, returnTo: string | null) {
+  const fallback = `/orgs/${orgId}`;
+  if (!returnTo || !returnTo.startsWith("/")) {
+    return fallback;
+  }
+  if (!returnTo.startsWith(`/orgs/${orgId}`)) {
+    return fallback;
+  }
+  return returnTo;
+}
+
+function withSearchParam(path: string, key: string, value: string) {
+  const url = new URL(path, "http://localhost");
+  url.searchParams.set(key, value);
+  return `${url.pathname}${url.search}`;
+}
+
+function withoutSearchParam(path: string, key: string) {
+  const url = new URL(path, "http://localhost");
+  url.searchParams.delete(key);
+  return `${url.pathname}${url.search}`;
+}
+
 async function createTaskAction(formData: FormData) {
   "use server";
 
@@ -23,6 +47,7 @@ async function createTaskAction(formData: FormData) {
   }
 
   const orgId = String(formData.get("orgId") || "");
+  const returnTo = normalizeReturnTo(orgId, String(formData.get("returnTo") || ""));
 
   const title = String(formData.get("title") || "").trim();
   const description = String(formData.get("description") || "").trim();
@@ -31,7 +56,7 @@ async function createTaskAction(formData: FormData) {
   const assignedToUserId = String(formData.get("assignedToUserId") || "").trim();
 
   if (!title) {
-    return;
+    redirect(withSearchParam(returnTo, "taskError", "Title is required."));
   }
 
   try {
@@ -46,11 +71,13 @@ async function createTaskAction(formData: FormData) {
         assignedToUserId: assignedToUserId || null,
       },
     });
-  } catch {
-    return;
+  } catch (error) {
+    const message =
+      error instanceof AuthorizationError ? error.message : "Unable to create task.";
+    redirect(withSearchParam(returnTo, "taskError", message));
   }
 
-  redirect(`/orgs/${orgId}`);
+  redirect(withoutSearchParam(returnTo, "taskError"));
 }
 
 async function changeRoleAction(formData: FormData) {
@@ -62,11 +89,12 @@ async function changeRoleAction(formData: FormData) {
   }
 
   const orgId = String(formData.get("orgId") || "");
+  const returnTo = normalizeReturnTo(orgId, String(formData.get("returnTo") || ""));
   const memberUserId = String(formData.get("userId") || "");
   const role = String(formData.get("role") || "") as Role;
 
   if (!Object.values(Role).includes(role)) {
-    return;
+    redirect(withSearchParam(returnTo, "roleError", "Invalid role selection."));
   }
 
   try {
@@ -76,11 +104,13 @@ async function changeRoleAction(formData: FormData) {
       memberUserId,
       role,
     });
-  } catch {
-    return;
+  } catch (error) {
+    const message =
+      error instanceof AuthorizationError ? error.message : "Unable to update role.";
+    redirect(withSearchParam(returnTo, "roleError", message));
   }
 
-  redirect(`/orgs/${orgId}`);
+  redirect(withoutSearchParam(returnTo, "roleError"));
 }
 
 export default async function OrgPage({ params, searchParams }: PageProps) {
@@ -121,6 +151,10 @@ export default async function OrgPage({ params, searchParams }: PageProps) {
   const toParam = typeof searchParams.to === "string" ? new Date(searchParams.to) : undefined;
   const fromValue = typeof searchParams.from === "string" ? searchParams.from : "";
   const toValue = typeof searchParams.to === "string" ? searchParams.to : "";
+  const taskError =
+    typeof searchParams.taskError === "string" ? searchParams.taskError : undefined;
+  const roleError =
+    typeof searchParams.roleError === "string" ? searchParams.roleError : undefined;
 
   const status = statusParam && Object.values(TaskStatus).includes(statusParam as TaskStatus)
     ? (statusParam as TaskStatus)
@@ -165,6 +199,24 @@ export default async function OrgPage({ params, searchParams }: PageProps) {
   };
 
   const canCreateTasks = true;
+  const inviteRoles =
+    membership.role === "ADMIN"
+      ? [Role.ADMIN, Role.MANAGER, Role.MEMBER]
+      : membership.role === "MANAGER"
+        ? [Role.MANAGER, Role.MEMBER]
+        : [];
+  const buildReturnTo = () => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(searchParams)) {
+      if (!value || key === "taskError" || key === "roleError") {
+        continue;
+      }
+      query.set(key, Array.isArray(value) ? value[0] : value);
+    }
+    const queryString = query.toString();
+    return queryString ? `/orgs/${params.orgId}?${queryString}` : `/orgs/${params.orgId}`;
+  };
+  const returnTo = buildReturnTo();
   const buildPageLink = (nextPage: number) => {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(searchParams)) {
@@ -274,6 +326,11 @@ export default async function OrgPage({ params, searchParams }: PageProps) {
               </form>
 
               <div className="mt-6 space-y-3">
+                {taskError ? (
+                  <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+                    {taskError}
+                  </p>
+                ) : null}
                 {tasksResult.items.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-[color:var(--border)] bg-white/70 px-4 py-6 text-sm text-[color:var(--muted)]">
                     No tasks match your filters yet.
@@ -337,6 +394,7 @@ export default async function OrgPage({ params, searchParams }: PageProps) {
                 <h2 className="font-display text-xl">Create a task</h2>
                 <form action={createTaskAction} className="mt-4 space-y-4 text-sm">
                   <input type="hidden" name="orgId" value={params.orgId} />
+                  <input type="hidden" name="returnTo" value={returnTo} />
                   <label className="flex flex-col gap-2">
                     Title
                     <input
@@ -411,7 +469,7 @@ export default async function OrgPage({ params, searchParams }: PageProps) {
           <aside className="space-y-6">
             <InvitePanel
               orgId={params.orgId}
-              canInvite={membership.role === "ADMIN" || membership.role === "MANAGER"}
+              allowedRoles={inviteRoles}
             />
 
             {canViewMembers ? (
@@ -435,6 +493,7 @@ export default async function OrgPage({ params, searchParams }: PageProps) {
                           className="mt-2 flex items-center gap-2"
                         >
                           <input type="hidden" name="orgId" value={params.orgId} />
+                          <input type="hidden" name="returnTo" value={returnTo} />
                           <input type="hidden" name="userId" value={member.userId} />
                           <select
                             name="role"
@@ -460,6 +519,11 @@ export default async function OrgPage({ params, searchParams }: PageProps) {
                     </div>
                   ))}
                 </div>
+                {roleError ? (
+                  <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+                    {roleError}
+                  </p>
+                ) : null}
               </section>
             ) : (
               <section className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--surface)] p-6">

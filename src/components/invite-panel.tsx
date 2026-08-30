@@ -2,22 +2,24 @@
 
 import { useState } from "react";
 
-import type { Role } from "@/lib/roles";
-import { roles } from "@/lib/roles";
+import type { Role } from "@prisma/client";
 
 type Props = {
   orgId: string;
-  canInvite: boolean;
+  allowedRoles: Role[];
 };
 
-export function InvitePanel({ orgId, canInvite }: Props) {
+export function InvitePanel({ orgId, allowedRoles }: Props) {
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<Role>("MEMBER");
+  const defaultRole = allowedRoles.includes("MEMBER")
+    ? "MEMBER"
+    : allowedRoles[0] ?? "MEMBER";
+  const [role, setRole] = useState<Role>(defaultRole);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  if (!canInvite) {
+  if (allowedRoles.length === 0) {
     return null;
   }
 
@@ -64,7 +66,7 @@ export function InvitePanel({ orgId, canInvite }: Props) {
           onChange={(event) => setRole(event.target.value as Role)}
           className="rounded-xl border border-[color:var(--border)] bg-white px-4 py-2 text-sm"
         >
-          {roles.map((roleOption) => (
+          {allowedRoles.map((roleOption) => (
             <option key={roleOption} value={roleOption}>
               {roleOption[0] + roleOption.slice(1).toLowerCase()}
             </option>

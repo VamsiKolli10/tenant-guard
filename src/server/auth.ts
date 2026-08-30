@@ -2,6 +2,7 @@ import type { AuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { z } from "zod";
 
+import { consumeAuthRateLimit } from "@/server/auth-rate-limit";
 import { prisma } from "@/server/db";
 import { verifyPassword } from "@/server/password";
 
@@ -11,8 +12,14 @@ const credentialsSchema = z.object({
 });
 
 export const authOptions: AuthOptions = {
+  useSecureCookies: process.env.NODE_ENV === "production",
   session: {
     strategy: "jwt",
+    maxAge: 12 * 60 * 60,
+    updateAge: 60 * 60,
+  },
+  jwt: {
+    maxAge: 12 * 60 * 60,
   },
   pages: {
     signIn: "/signin",
@@ -30,8 +37,19 @@ export const authOptions: AuthOptions = {
           return null;
         }
 
+        const email = parsed.data.email.toLowerCase();
+        const rateLimit = await consumeAuthRateLimit({
+          action: "credentials-login",
+          identifier: email,
+          limit: 5,
+          windowMs: 15 * 60 * 1000,
+        });
+        if (!rateLimit.allowed) {
+          return null;
+        }
+
         const user = await prisma.user.findUnique({
-          where: { email: parsed.data.email.toLowerCase() },
+          where: { email },
         });
 
         if (!user?.passwordHash) {

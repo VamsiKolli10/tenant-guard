@@ -2,12 +2,14 @@ import { Role } from "@prisma/client";
 import { z } from "zod";
 
 import { jsonError, jsonOk } from "@/server/api";
+import { sendOrganizationInvitation } from "@/server/email";
 import { AuthorizationError } from "@/server/errors";
 import { getSessionUserId } from "@/server/session";
 import { inviteService } from "@/services/invitations";
+import { orgService } from "@/services/organizations";
 
 type Params = {
-  params: { orgId: string };
+  params: Promise<{ orgId: string }>;
 };
 
 const inviteSchema = z.object({
@@ -24,6 +26,7 @@ function getAppUrl() {
 }
 
 export async function GET(_: Request, { params }: Params) {
+  const { orgId } = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return jsonError("Unauthorized.", 401);
@@ -31,7 +34,7 @@ export async function GET(_: Request, { params }: Params) {
 
   try {
     const invites = await inviteService.listInvites({
-      orgId: params.orgId,
+      orgId,
       actorUserId: userId,
     });
     return jsonOk(invites);
@@ -46,6 +49,7 @@ export async function GET(_: Request, { params }: Params) {
 }
 
 export async function POST(req: Request, { params }: Params) {
+  const { orgId } = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return jsonError("Unauthorized.", 401);
@@ -65,18 +69,34 @@ export async function POST(req: Request, { params }: Params) {
 
   try {
     const { invitation, token } = await inviteService.createInvite({
-      orgId: params.orgId,
+      orgId,
       actorUserId: userId,
       email: parsed.data.email,
       role: parsed.data.role,
     });
 
     const inviteLink = `${getAppUrl()}/invite/${token}`;
+    let emailSent = false;
+
+    if (invitation.email) {
+      try {
+        const organization = await orgService.getOrg({ orgId, userId });
+        await sendOrganizationInvitation({
+          to: invitation.email,
+          token,
+          organizationName: organization.name,
+        });
+        emailSent = true;
+      } catch (error) {
+        console.error("Unable to send invitation email.", error);
+      }
+    }
 
     return jsonOk(
       {
         invitation,
         inviteLink,
+        emailSent,
       },
       201,
     );

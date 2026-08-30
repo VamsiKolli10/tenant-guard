@@ -9,6 +9,7 @@
     "lint": "eslint",
     "postinstall": "prisma generate",
     "seed:demo": "node scripts/seed-demo.mjs",
+    "db:backup": "node scripts/backup-database.mjs",
     "test": "node scripts/run-tests.mjs",
     "test:unit": "vitest run"
   },
@@ -19,6 +20,7 @@
     "next-auth": "^4.24.13",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "resend": "^6.25.0",
     "zod": "^4.3.2"
   },
   "devDependencies": {

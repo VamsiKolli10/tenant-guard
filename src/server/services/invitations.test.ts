@@ -27,7 +27,7 @@ it("creates and accepts an invitation with audit trail", async () => {
     ownerId: admin.id,
   });
 
-  const { invitation, token } = await createInvitation({
+  const { token } = await createInvitation({
     orgId: org.id,
     email: invitee.email,
     role: "MEMBER",

@@ -3,7 +3,7 @@ import { expect, it } from "vitest";
 import { Role } from "@prisma/client";
 
 import { prisma } from "@/server/db";
-import { AuthorizationError } from "@/server/errors";
+import { AuthorizationError, NotFoundError } from "@/server/errors";
 import { createInvitation } from "@/server/services/invitations";
 import { createOrganization } from "@/server/services/organizations";
 import { createUser } from "@/server/services/users";
@@ -151,6 +151,19 @@ it("creates invite audit rows", async () => {
   });
 });
 
+it("prevents managers from inviting admins", async () => {
+  const { org, manager } = await seedOrg();
+
+  await expect(
+    inviteService.createInvite({
+      orgId: org.id,
+      actorUserId: manager.id,
+      email: "admin-invite@example.com",
+      role: Role.ADMIN,
+    }),
+  ).rejects.toThrow(AuthorizationError);
+});
+
 it("accepts invites, creates memberships, and marks invites accepted", async () => {
   const { org, admin } = await seedOrg();
 
@@ -186,4 +199,36 @@ it("accepts invites, creates memberships, and marks invites accepted", async () 
   });
 
   expect(audit).not.toBeNull();
+});
+
+it("does not expose a task through another organization's scope", async () => {
+  const { org, admin, member } = await seedOrg();
+
+  const task = await taskService.createTask({
+    orgId: org.id,
+    userId: admin.id,
+    payload: {
+      title: "Tenant A private task",
+    },
+  });
+
+  const otherOrg = await createOrganization({
+    name: "Separate Tenant",
+    ownerId: member.id,
+  });
+
+  await expect(
+    taskService.getTask({
+      orgId: otherOrg.id,
+      userId: member.id,
+      taskId: task.id,
+    }),
+  ).rejects.toThrow(NotFoundError);
+
+  await expect(
+    taskService.listTasks({
+      orgId: org.id,
+      userId: member.id + "-not-a-member",
+    }),
+  ).rejects.toThrow(AuthorizationError);
 });

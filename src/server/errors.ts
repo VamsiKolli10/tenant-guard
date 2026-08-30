@@ -11,3 +11,10 @@ export class NotFoundError extends Error {
     this.name = "NotFoundError";
   }
 }
+
+export class InvalidTokenError extends Error {
+  constructor(message = "This link is invalid or has expired.") {
+    super(message);
+    this.name = "InvalidTokenError";
+  }
+}

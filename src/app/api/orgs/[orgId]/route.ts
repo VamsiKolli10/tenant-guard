@@ -4,10 +4,11 @@ import { getSessionUserId } from "@/server/session";
 import { orgService } from "@/services/organizations";
 
 type Params = {
-  params: { orgId: string };
+  params: Promise<{ orgId: string }>;
 };
 
 export async function GET(_: Request, { params }: Params) {
+  const { orgId } = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return jsonError("Unauthorized.", 401);
@@ -15,7 +16,7 @@ export async function GET(_: Request, { params }: Params) {
 
   try {
     const org = await orgService.getOrg({
-      orgId: params.orgId,
+      orgId,
       userId,
     });
 

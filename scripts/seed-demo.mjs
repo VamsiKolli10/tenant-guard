@@ -7,9 +7,20 @@ config();
 
 const prisma = new PrismaClient();
 
+const defaultDemoPassword = "Demo123!";
 const demoEmail = process.env.DEMO_EMAIL || "demo@tenantguard.dev";
-const demoPassword = process.env.DEMO_PASSWORD || "Demo123!";
+const demoPassword = process.env.DEMO_PASSWORD || defaultDemoPassword;
 const demoOrgName = process.env.DEMO_ORG_NAME || "Tenant Guard Demo";
+
+if (
+  demoPassword === defaultDemoPassword &&
+  process.env.ALLOW_DEMO_SEED !== "true"
+) {
+  console.error(
+    "Refusing to seed with the default demo password. Set DEMO_PASSWORD or ALLOW_DEMO_SEED=true to proceed.",
+  );
+  process.exit(1);
+}
 
 async function seed() {
   const passwordHash = await bcrypt.hash(demoPassword, 10);

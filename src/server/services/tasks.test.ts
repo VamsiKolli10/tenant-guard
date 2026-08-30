@@ -175,3 +175,28 @@ it("allows members to update tasks they created", async () => {
 
   expect(updated.title).toBe("Updated by owner");
 });
+
+it("prevents assigning a task to a user outside the organization", async () => {
+  const admin = await createUser({
+    email: "assignment-admin@example.com",
+    password: "password123",
+  });
+  const outsider = await createUser({
+    email: "assignment-outsider@example.com",
+    password: "password123",
+  });
+  const org = await createOrganization({
+    name: "Assignment Guard",
+    ownerId: admin.id,
+  });
+
+  await expect(
+    createTask({
+      orgId: org.id,
+      title: "Invalid assignment",
+      assignedToUserId: outsider.id,
+      actorUserId: admin.id,
+      actorRole: Role.ADMIN,
+    }),
+  ).rejects.toThrow(AuthorizationError);
+});

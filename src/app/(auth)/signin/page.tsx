@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 
-export default function SignInPage() {
+function SignInForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
@@ -84,6 +84,12 @@ export default function SignInPage() {
           {isSubmitting ? "Signing in..." : "Sign in"}
         </button>
 
+        <p className="text-center text-sm">
+          <Link href="/forgot-password" className="text-[color:var(--accent)]">
+            Forgot your password?
+          </Link>
+        </p>
+
         <p className="text-center text-sm text-[color:var(--muted)]">
           New here?{" "}
           <Link href="/signup" className="text-[color:var(--accent)]">
@@ -92,5 +98,19 @@ export default function SignInPage() {
         </p>
       </div>
     </form>
+  );
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--surface)] p-8 text-center text-sm text-[color:var(--muted)] shadow-xl shadow-black/5">
+          Loading sign in…
+        </div>
+      }
+    >
+      <SignInForm />
+    </Suspense>
   );
 }

@@ -2,6 +2,7 @@ import "server-only";
 
 import type { Role } from "@prisma/client";
 
+import { AuthorizationError } from "@/server/errors";
 import { requireRole } from "@/services/tenancy";
 import {
   acceptInvitation,
@@ -10,7 +11,12 @@ import {
   revokeInvitation,
 } from "@/server/services/invitations";
 
-const INVITE_ROLES: Role[] = ["ADMIN", "MANAGER"];
+const INVITER_ROLES: Role[] = ["ADMIN", "MANAGER"];
+const INVITE_ROLES_BY_ACTOR: Record<Role, Role[]> = {
+  ADMIN: ["ADMIN", "MANAGER", "MEMBER"],
+  MANAGER: ["MANAGER", "MEMBER"],
+  MEMBER: [],
+};
 
 type CreateInviteInput = {
   orgId: string;
@@ -37,7 +43,15 @@ type AcceptInviteInput = {
 
 export const inviteService = {
   async createInvite(input: CreateInviteInput) {
-    await requireRole(input.orgId, input.actorUserId, INVITE_ROLES);
+    const membership = await requireRole(
+      input.orgId,
+      input.actorUserId,
+      INVITER_ROLES,
+    );
+    const allowedRoles = INVITE_ROLES_BY_ACTOR[membership.role] ?? [];
+    if (!allowedRoles.includes(input.role)) {
+      throw new AuthorizationError("Only admins can invite admins.");
+    }
 
     return createInvitation({
       orgId: input.orgId,
@@ -48,12 +62,12 @@ export const inviteService = {
   },
 
   async listInvites(input: ListInvitesInput) {
-    await requireRole(input.orgId, input.actorUserId, INVITE_ROLES);
+    await requireRole(input.orgId, input.actorUserId, INVITER_ROLES);
     return listInvitations(input.orgId);
   },
 
   async revokeInvite(input: RevokeInviteInput) {
-    await requireRole(input.orgId, input.actorUserId, INVITE_ROLES);
+    await requireRole(input.orgId, input.actorUserId, INVITER_ROLES);
 
     return revokeInvitation({
       orgId: input.orgId,

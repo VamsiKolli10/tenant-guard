@@ -85,12 +85,16 @@ export default function SignUpPage() {
             <input
               type="password"
               required
-              minLength={8}
+              minLength={12}
+              maxLength={128}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               className="rounded-xl border border-[color:var(--border)] bg-white px-4 py-2"
             />
           </label>
+          <p className="text-xs text-[color:var(--muted)]">
+            Use at least 12 characters.
+          </p>
         </div>
 
         {error ? (

@@ -7,7 +7,7 @@ import { getSessionUserId } from "@/server/session";
 import { taskService } from "@/services/tasks";
 
 type Params = {
-  params: { orgId: string };
+  params: Promise<{ orgId: string }>;
 };
 
 const listSchema = z.object({
@@ -33,6 +33,7 @@ const createSchema = z.object({
 });
 
 export async function GET(req: Request, { params }: Params) {
+  const { orgId } = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return jsonError("Unauthorized.", 401);
@@ -79,7 +80,7 @@ export async function GET(req: Request, { params }: Params) {
 
   try {
     const result = await taskService.listTasks({
-      orgId: params.orgId,
+      orgId,
       userId,
       page: parsed.data.page,
       limit: parsed.data.pageSize ?? parsed.data.limit,
@@ -111,6 +112,7 @@ export async function GET(req: Request, { params }: Params) {
 }
 
 export async function POST(req: Request, { params }: Params) {
+  const { orgId } = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return jsonError("Unauthorized.", 401);
@@ -130,7 +132,7 @@ export async function POST(req: Request, { params }: Params) {
 
   try {
     const task = await taskService.createTask({
-      orgId: params.orgId,
+      orgId,
       userId,
       payload: {
         title: parsed.data.title,

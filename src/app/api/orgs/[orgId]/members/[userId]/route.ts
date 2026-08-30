@@ -7,7 +7,7 @@ import { getSessionUserId } from "@/server/session";
 import { membershipService } from "@/services/memberships";
 
 type Params = {
-  params: { orgId: string; userId: string };
+  params: Promise<{ orgId: string; userId: string }>;
 };
 
 const roleSchema = z.object({
@@ -15,6 +15,7 @@ const roleSchema = z.object({
 });
 
 export async function PATCH(req: Request, { params }: Params) {
+  const { orgId, userId: memberUserId } = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return jsonError("Unauthorized.", 401);
@@ -34,9 +35,9 @@ export async function PATCH(req: Request, { params }: Params) {
 
   try {
     const updated = await membershipService.changeRole({
-      orgId: params.orgId,
+      orgId,
       userId,
-      memberUserId: params.userId,
+      memberUserId,
       role: parsed.data.role,
     });
 
@@ -47,6 +48,30 @@ export async function PATCH(req: Request, { params }: Params) {
     }
     const message =
       error instanceof Error ? error.message : "Unable to update member.";
+    return jsonError(message, 404);
+  }
+}
+
+export async function DELETE(_: Request, { params }: Params) {
+  const { orgId, userId: memberUserId } = await params;
+  const userId = await getSessionUserId();
+  if (!userId) {
+    return jsonError("Unauthorized.", 401);
+  }
+
+  try {
+    const removed = await membershipService.removeMember({
+      orgId,
+      userId,
+      memberUserId,
+    });
+    return jsonOk(removed);
+  } catch (error) {
+    if (error instanceof AuthorizationError) {
+      return jsonError(error.message, 403);
+    }
+    const message =
+      error instanceof Error ? error.message : "Unable to remove member.";
     return jsonError(message, 404);
   }
 }

@@ -26,6 +26,20 @@ export async function createTask(input: CreateTaskInput, db: DbClient = prisma) 
     throw new AuthorizationError("Not allowed to create tasks.");
   }
 
+  if (input.assignedToUserId) {
+    const assigneeMembership = await db.membership.findUnique({
+      where: {
+        userId_orgId: {
+          userId: input.assignedToUserId,
+          orgId: input.orgId,
+        },
+      },
+    });
+    if (!assigneeMembership) {
+      throw new AuthorizationError("Assignee must be an organization member.");
+    }
+  }
+
   const task = await db.task.create({
     data: {
       orgId: input.orgId,
@@ -85,11 +99,24 @@ export async function updateTask(
     throw new AuthorizationError("Not allowed to update this task.");
   }
 
-  const normalizeString = (value: string | null | undefined) =>
-    value === undefined ? undefined : value?.trim() || null;
 
-  const changes: Record<string, { from: unknown; to: unknown }> = {};
-  const recordChange = (field: string, from: unknown, to: unknown) => {
+  if (input.data.assignedToUserId) {
+    const assigneeMembership = await db.membership.findUnique({
+      where: {
+        userId_orgId: {
+          userId: input.data.assignedToUserId,
+          orgId: input.orgId,
+        },
+      },
+    });
+    if (!assigneeMembership) {
+      throw new AuthorizationError("Assignee must be an organization member.");
+    }
+  }
+
+  type ChangeValue = string | number | boolean | null;
+  const changes: Record<string, Prisma.InputJsonObject> = {};
+  const recordChange = (field: string, from: ChangeValue, to: ChangeValue) => {
     if (from !== to) {
       changes[field] = { from, to };
     }
@@ -101,7 +128,7 @@ export async function updateTask(
   }
 
   if (input.data.description !== undefined) {
-    const nextDescription = normalizeString(input.data.description);
+    const nextDescription = input.data.description?.trim() || null;
     recordChange("description", existing.description ?? null, nextDescription);
   }
 

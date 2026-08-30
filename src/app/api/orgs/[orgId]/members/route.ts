@@ -4,10 +4,11 @@ import { AuthorizationError } from "@/server/errors";
 import { membershipService } from "@/services/memberships";
 
 type Params = {
-  params: { orgId: string };
+  params: Promise<{ orgId: string }>;
 };
 
 export async function GET(_: Request, { params }: Params) {
+  const { orgId } = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return jsonError("Unauthorized.", 401);
@@ -15,7 +16,7 @@ export async function GET(_: Request, { params }: Params) {
 
   try {
     const members = await membershipService.listMembers({
-      orgId: params.orgId,
+      orgId,
       userId,
     });
 

@@ -7,7 +7,7 @@ import { getSessionUserId } from "@/server/session";
 import { taskService } from "@/services/tasks";
 
 type Params = {
-  params: { orgId: string; taskId: string };
+  params: Promise<{ orgId: string; taskId: string }>;
 };
 
 const updateSchema = z.object({
@@ -20,6 +20,7 @@ const updateSchema = z.object({
 });
 
 export async function GET(_: Request, { params }: Params) {
+  const { orgId, taskId } = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return jsonError("Unauthorized.", 401);
@@ -27,9 +28,9 @@ export async function GET(_: Request, { params }: Params) {
 
   try {
     const task = await taskService.getTask({
-      orgId: params.orgId,
+      orgId,
       userId,
-      taskId: params.taskId,
+      taskId,
     });
 
     return jsonOk(task);
@@ -46,6 +47,7 @@ export async function GET(_: Request, { params }: Params) {
 }
 
 export async function PATCH(req: Request, { params }: Params) {
+  const { orgId, taskId } = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return jsonError("Unauthorized.", 401);
@@ -65,9 +67,9 @@ export async function PATCH(req: Request, { params }: Params) {
 
   try {
     const task = await taskService.updateTask({
-      orgId: params.orgId,
+      orgId,
       userId,
-      taskId: params.taskId,
+      taskId,
       payload: {
         title: parsed.data.title,
         description:
@@ -97,6 +99,7 @@ export async function PATCH(req: Request, { params }: Params) {
 }
 
 export async function DELETE(_: Request, { params }: Params) {
+  const { orgId, taskId } = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return jsonError("Unauthorized.", 401);
@@ -104,9 +107,9 @@ export async function DELETE(_: Request, { params }: Params) {
 
   try {
     const task = await taskService.deleteTask({
-      orgId: params.orgId,
+      orgId,
       userId,
-      taskId: params.taskId,
+      taskId,
     });
 
     return jsonOk(task);
