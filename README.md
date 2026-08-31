@@ -1,8 +1,12 @@
 # Tenant Guard
 
+Tenant Guard is a small, security-focused multi-tenant task-management application. It is designed as a practical SaaS reference project: users belong to organizations, every organization is a tenant boundary, permissions are role-based, and sensitive actions are recorded in an append-only audit log.
+
+This is currently a personal project and MVP work in progress. It is suitable for local development and controlled pilots; production readiness still requires the deployment, monitoring, backup, and operational work described in [`docs/product/roadmap.md`](docs/product/roadmap.md).
+
 Tenant Guard is a multi-tenant task management MVP built around tenant isolation, role-based access control, invite-based onboarding, and an append-only audit trail. It is a practical reference app for SaaS-style organization workspaces where every request must be scoped to the correct tenant before data is read or changed.
 
-The product flow is intentionally small:
+## Product flow
 
 1. A user signs up or signs in with email and password.
 2. The user creates an organization and becomes its `ADMIN`.
@@ -10,11 +14,130 @@ The product flow is intentionally small:
 4. Members collaborate on tasks inside the organization.
 5. Sensitive actions are written to the audit log for accountability.
 
-## What the application does
+## Features
 
 Tenant Guard models a common B2B SaaS permission problem: one application serves many organizations, but users should only see and mutate data for organizations where they have a membership.
 
-The app includes:
+- Email/password authentication with NextAuth credentials and JWT sessions.
+- Email verification and password recovery flows.
+- Organizations and memberships with `ADMIN`, `MANAGER`, and `MEMBER` roles.
+- Hashed, expiring, revocable invitation tokens.
+- Task creation, filtering, pagination, assignment, status, priority, and due dates.
+- Tenant-aware service-layer authorization.
+- Append-only audit events for sensitive actions.
+- PostgreSQL persistence through Prisma.
+- Unit and database-backed service tests.
+- GitHub Actions CI configuration.
+
+## Tech stack
+
+Next.js App Router · React · TypeScript · NextAuth · Prisma · PostgreSQL · Tailwind CSS · Vitest · Resend
+
+## Local development
+
+### Prerequisites
+
+- Node.js 20 or newer
+- npm
+- PostgreSQL 14 or newer
+
+```bash
+npm install
+cp .env.example .env
+npx prisma migrate dev
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). Set a random `NEXTAUTH_SECRET` and local database URLs in `.env`.
+
+### Demo data
+
+Set `DEMO_EMAIL`, `DEMO_PASSWORD`, and `DEMO_ORG_NAME` in `.env`, then run:
+
+```bash
+npm run seed:demo
+```
+
+The seed script refuses the default demo password unless `ALLOW_DEMO_SEED=true` is explicitly set. Never use demo credentials in a shared or production environment.
+
+## Commands
+
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Start the development server |
+| `npm run lint` | Run ESLint |
+| `npm run build` | Create a production build |
+| `npm test` | Reset the dedicated test database and run Vitest |
+| `npm run test:unit` | Run Vitest without resetting the database |
+| `npx prisma validate` | Validate the Prisma schema |
+| `npx prisma studio` | Inspect local database records |
+| `npm run db:backup` | Create a local database backup |
+
+### Running tests
+
+Tests use `TEST_DATABASE_URL` and reset that database before execution. Create `.env.test` from `.env.test.example` and point it only at a disposable test database:
+
+```bash
+cp .env.test.example .env.test
+npm test
+```
+
+The test runner refuses to reset a database whose URL does not look like a test database unless `ALLOW_UNSAFE_TEST_DB=true` is set. Do not use that override against shared or production data.
+
+## Authorization model
+
+All organization data must be accessed through a tenant-aware service path. The high-level permissions are:
+
+| Capability | Admin | Manager | Member |
+| --- | ---: | ---: | ---: |
+| View and create tasks | Yes | Yes | Yes |
+| Update any task | Yes | Yes | No |
+| Update own or assigned task | Yes | Yes | Yes |
+| Delete tasks | Yes | Yes | No |
+| View members | Yes | Yes | No |
+| Create invitations | Yes | Yes | No |
+| Invite managers | Yes | Yes | No |
+| Invite administrators | Yes | No | No |
+| Change member roles | Yes | No | No |
+| Read audit events | Yes | Yes | No |
+
+See [`docs/architecture/tenancy-and-rbac.md`](docs/architecture/tenancy-and-rbac.md) before changing authorization behavior.
+
+## Project structure
+
+```text
+src/app/                 Pages and API route handlers
+src/components/          Reusable UI components
+src/services/            Tenant-aware application services
+src/server/              Auth, database, RBAC, logging, and server services
+prisma/                  Schema and checked-in migrations
+scripts/                 Test, seed, and backup utilities
+docs/                    Product, architecture, security, and operations docs
+```
+
+## Deployment notes
+
+Use `npx prisma migrate deploy` for staging and production. Do not use `prisma db push` against a production database. Keep test, preview, staging, and production databases and secrets separate.
+
+Before onboarding external users, complete the work in [`docs/operations/deployment.md`](docs/operations/deployment.md) and [`docs/product/roadmap.md`](docs/product/roadmap.md).
+
+## Documentation
+
+Start with [`docs/README.md`](docs/README.md), then consult the product, architecture, security, and operations guides there.
+
+## Contributing and security
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the development checklist. Report security issues privately according to [`SECURITY.md`](SECURITY.md).
+
+## License
+
+This project is licensed under the MIT License. See [`LICENSE`](LICENSE).
+
+<!-- The detailed API, data model, and RBAC reference remains in docs/ for maintainers. -->
+
+<!--
+Additional reference detail is retained below for maintainers.
+-->
 
 - Email/password authentication with NextAuth credentials and JWT sessions.
 - Organization creation and membership management.
@@ -306,7 +429,7 @@ Recommended deployment flow:
 3. Deploy the Next.js app.
 4. Apply schema changes.
 
-This repository currently uses `npx prisma db push` for local MVP setup and does not include migration files. Before a production launch, create Prisma migrations with `npx prisma migrate dev` in development, commit the generated `prisma/migrations` files, and use `npx prisma migrate deploy` in production.
+The repository includes checked-in Prisma migrations. Use `npx prisma migrate dev` during development and `npx prisma migrate deploy` in staging and production.
 
 ## Security notes
 
@@ -325,4 +448,4 @@ This is an MVP, so a few production-grade features are intentionally out of scop
 - No email delivery is wired up for invites; invite links are shown in the UI.
 - No background jobs for invite expiration cleanup.
 - No full admin audit-log UI yet, although the API and database model exist.
-- No Prisma migration files are included; the local flow uses `prisma db push`.
+- Production deployment, monitoring, backup-restore rehearsal, and pilot operations still need to be completed.
