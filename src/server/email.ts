@@ -2,18 +2,23 @@ import "server-only";
 
 import { Resend } from "resend";
 
+function getAppUrl() {
+  return (
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXTAUTH_URL ||
+    "http://localhost:3000"
+  );
+}
+
 function getEmailConfig() {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.EMAIL_FROM;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL;
 
-  if (!apiKey || !from || !appUrl) {
-    throw new Error(
-      "RESEND_API_KEY, EMAIL_FROM, and NEXT_PUBLIC_APP_URL are required for email delivery.",
-    );
+  if (!apiKey || !from) {
+    return null;
   }
 
-  return { apiKey, from, appUrl };
+  return { apiKey, from };
 }
 
 async function sendEmail(input: {
@@ -22,7 +27,35 @@ async function sendEmail(input: {
   text: string;
   html: string;
 }) {
-  const { apiKey, from } = getEmailConfig();
+  const config = getEmailConfig();
+
+  // Outside production, an unconfigured mailer prints the message to the server
+  // log instead of failing. Verification is required to sign in, so a developer
+  // with no email provider would otherwise be locked out of their own account
+  // with no way forward.
+  if (!config) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "RESEND_API_KEY and EMAIL_FROM are required for email delivery in production.",
+      );
+    }
+
+    console.info(
+      [
+        "",
+        "──────────── email not configured; printing instead ────────────",
+        `To:      ${input.to}`,
+        `Subject: ${input.subject}`,
+        "",
+        input.text,
+        "────────────────────────────────────────────────────────────────",
+        "",
+      ].join("\n"),
+    );
+    return null;
+  }
+
+  const { apiKey, from } = config;
   const resend = new Resend(apiKey);
   const { data, error } = await resend.emails.send({
     from,
@@ -40,8 +73,7 @@ async function sendEmail(input: {
 }
 
 function actionUrl(path: string, token: string) {
-  const { appUrl } = getEmailConfig();
-  const url = new URL(path, appUrl);
+  const url = new URL(path, getAppUrl());
   url.searchParams.set("token", token);
   return url.toString();
 }
@@ -71,10 +103,9 @@ export function sendOrganizationInvitation(input: {
   token: string;
   organizationName: string;
 }) {
-  const { appUrl } = getEmailConfig();
   const url = new URL(
     `/invite/${encodeURIComponent(input.token)}`,
-    appUrl,
+    getAppUrl(),
   ).toString();
   return sendEmail({
     to: input.to,

@@ -8,6 +8,7 @@ import {
   revokeInvitation,
 } from "@/server/services/invitations";
 import { createUser } from "@/server/services/users";
+import { createVerifiedUser } from "@/test/factories";
 
 it("creates and accepts an invitation with audit trail", async () => {
   const admin = await createUser({
@@ -16,7 +17,7 @@ it("creates and accepts an invitation with audit trail", async () => {
     password: "password123",
   });
 
-  const invitee = await createUser({
+  const invitee = await createVerifiedUser({
     email: "invitee@example.com",
     name: "Invitee",
     password: "password123",

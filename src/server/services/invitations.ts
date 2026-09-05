@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "crypto";
 
 import type { PrismaClient, Role } from "@prisma/client";
 
-import { prisma } from "@/server/db";
+import { prisma, prismaUnscoped } from "@/server/db";
 import { logAuditEvent } from "@/server/services/audit";
 import type { DbClient } from "@/server/services/types";
 
@@ -17,6 +17,23 @@ type CreateInvitationInput = {
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
+
+/**
+ * Invitation fields safe to return across an API boundary. `tokenHash` is
+ * deliberately excluded — it is derived from the invite secret and must never
+ * appear in a response body.
+ */
+const PUBLIC_INVITATION_SELECT = {
+  id: true,
+  orgId: true,
+  email: true,
+  role: true,
+  invitedByUserId: true,
+  createdAt: true,
+  expiresAt: true,
+  revokedAt: true,
+  acceptedAt: true,
+} as const;
 
 export async function createInvitation(
   input: CreateInvitationInput,
@@ -39,17 +56,7 @@ export async function createInvitation(
       invitedByUserId: input.invitedByUserId,
       expiresAt,
     },
-    select: {
-      id: true,
-      orgId: true,
-      email: true,
-      role: true,
-      invitedByUserId: true,
-      createdAt: true,
-      expiresAt: true,
-      revokedAt: true,
-      acceptedAt: true,
-    },
+    select: PUBLIC_INVITATION_SELECT,
   });
 
   await logAuditEvent(db, {
@@ -76,10 +83,28 @@ export async function acceptInvitation(
   input: AcceptInvitationInput,
   db: PrismaClient = prisma,
 ) {
+  const tokenHash = hashToken(input.token.trim());
+
+  // Resolving which tenant a token belongs to is the one query in the
+  // application that cannot name an organization: the caller is a member of
+  // nothing, and the token itself is the authority. It therefore runs on the
+  // unguarded client, and reads nothing but the organization id.
+  const resolved = await prismaUnscoped.invitation.findUnique({
+    where: { tokenHash },
+    select: { orgId: true },
+  });
+
+  if (!resolved) {
+    throw new Error("Invite not found.");
+  }
+
+  const orgId = resolved.orgId;
+
   return db.$transaction(async (tx) => {
-    const tokenHash = hashToken(input.token.trim());
-    const invitation = await tx.invitation.findUnique({
-      where: { tokenHash },
+    // Re-read inside the transaction, now explicitly scoped, so validation and
+    // acceptance are atomic with respect to a concurrent revoke.
+    const invitation = await tx.invitation.findFirst({
+      where: { tokenHash, orgId },
     });
 
     if (!invitation) {
@@ -100,6 +125,12 @@ export async function acceptInvitation(
 
     if (!user) {
       throw new Error("User not found.");
+    }
+
+    // Checked independently of the sign-in gate: the tenant boundary must not
+    // depend on which authentication path the caller arrived through.
+    if (!user.emailVerifiedAt) {
+      throw new Error("Verify your email address before accepting an invite.");
     }
 
     if (invitation.email && invitation.email !== user.email.toLowerCase()) {
@@ -126,7 +157,7 @@ export async function acceptInvitation(
       }));
 
     await tx.invitation.update({
-      where: { id: invitation.id },
+      where: { id: invitation.id, orgId },
       data: {
         acceptedAt: new Date(),
       },
@@ -169,10 +200,11 @@ export async function revokeInvitation(
   }
 
   const invitation = await db.invitation.update({
-    where: { id: existing.id },
+    where: { id: existing.id, orgId: input.orgId },
     data: {
       revokedAt: new Date(),
     },
+    select: PUBLIC_INVITATION_SELECT,
   });
 
   await logAuditEvent(db, {
@@ -194,16 +226,6 @@ export async function listInvitations(orgId: string, db: DbClient = prisma) {
   return db.invitation.findMany({
     where: { orgId },
     orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      orgId: true,
-      email: true,
-      role: true,
-      invitedByUserId: true,
-      createdAt: true,
-      expiresAt: true,
-      revokedAt: true,
-      acceptedAt: true,
-    },
+    select: PUBLIC_INVITATION_SELECT,
   });
 }

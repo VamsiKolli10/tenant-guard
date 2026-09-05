@@ -101,9 +101,12 @@ export async function resetPasswordWithToken(token: string, password: string) {
       where: { userId: record.userId, consumedAt: null },
       data: { consumedAt: now },
     });
+    // Evict every session issued before this moment. Without it a reset does
+    // not remove an attacker who is already signed in, which is the main reason
+    // people reset a password in the first place.
     return tx.user.update({
       where: { id: record.userId },
-      data: { passwordHash },
+      data: { passwordHash, sessionsValidAfter: now },
     });
   });
 }

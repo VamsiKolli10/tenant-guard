@@ -28,20 +28,20 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <form onSubmit={onSubmit} className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--surface)] p-8 shadow-xl shadow-black/5">
+    <form onSubmit={onSubmit} className="card p-8">
       <div className="space-y-6">
         <div className="space-y-2 text-center">
           <h1 className="font-display text-2xl">Reset your password</h1>
           <p className="text-sm text-[color:var(--muted)]">We will send a one-hour reset link if the account exists.</p>
         </div>
-        <label className="flex flex-col gap-2 text-sm">
+        <label className="field-label">
           Email
-          <input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="rounded-xl border border-[color:var(--border)] bg-white px-4 py-2" />
+          <input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="input" />
         </label>
         {message ? <p className="rounded-xl border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700">{message}</p> : null}
-        {error ? <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p> : null}
+        {error ? <p className="alert alert-danger">{error}</p> : null}
         <button type="submit" disabled={isSubmitting} className="w-full rounded-full bg-[color:var(--foreground)] px-4 py-3 text-sm font-semibold text-[color:var(--surface)] disabled:opacity-60">{isSubmitting ? "Sending…" : "Send reset link"}</button>
-        <p className="text-center text-sm"><Link href="/signin" className="text-[color:var(--accent)]">Back to sign in</Link></p>
+        <p className="text-center text-sm"><Link href="/signin" className="text-[color:var(--accent)] underline">Back to sign in</Link></p>
       </div>
     </form>
   );

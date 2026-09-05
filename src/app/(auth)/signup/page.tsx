@@ -11,11 +11,13 @@ export default function SignUpPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [needsVerification, setNeedsVerification] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
+    setNeedsVerification(false);
     setIsSubmitting(true);
 
     const response = await fetch("/api/auth/register", {
@@ -40,7 +42,9 @@ export default function SignUpPage() {
 
     setIsSubmitting(false);
     if (result?.error) {
-      setError("Account created, but sign-in failed.");
+      // Sign-in is expected to fail here: the account exists but the address is
+      // not verified yet. That is the normal path, not an error, so say so.
+      setNeedsVerification(true);
       return;
     }
 
@@ -50,7 +54,7 @@ export default function SignUpPage() {
   return (
     <form
       onSubmit={onSubmit}
-      className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--surface)] p-8 shadow-xl shadow-black/5"
+      className="card p-8"
     >
       <div className="space-y-6">
         <div className="space-y-2 text-center">
@@ -61,26 +65,26 @@ export default function SignUpPage() {
         </div>
 
         <div className="space-y-4">
-          <label className="flex flex-col gap-2 text-sm">
+          <label className="field-label">
             Name
             <input
               type="text"
               value={name}
               onChange={(event) => setName(event.target.value)}
-              className="rounded-xl border border-[color:var(--border)] bg-white px-4 py-2"
+              className="input"
             />
           </label>
-          <label className="flex flex-col gap-2 text-sm">
+          <label className="field-label">
             Email
             <input
               type="email"
               required
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="rounded-xl border border-[color:var(--border)] bg-white px-4 py-2"
+              className="input"
             />
           </label>
-          <label className="flex flex-col gap-2 text-sm">
+          <label className="field-label">
             Password
             <input
               type="password"
@@ -89,7 +93,7 @@ export default function SignUpPage() {
               maxLength={128}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className="rounded-xl border border-[color:var(--border)] bg-white px-4 py-2"
+              className="input"
             />
           </label>
           <p className="text-xs text-[color:var(--muted)]">
@@ -98,9 +102,24 @@ export default function SignUpPage() {
         </div>
 
         {error ? (
-          <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+          <p role="alert" className="alert alert-danger">
             {error}
           </p>
+        ) : null}
+
+        {needsVerification ? (
+          <div role="status" className="alert alert-success flex-col items-start gap-2">
+            <p>
+              Account created. Check <strong>{email}</strong> for a verification
+              link — you need to verify before signing in.
+            </p>
+            <Link
+              href={`/resend-verification?email=${encodeURIComponent(email)}`}
+              className="underline"
+            >
+              Did not get it? Send another link
+            </Link>
+          </div>
         ) : null}
 
         <button
@@ -113,7 +132,7 @@ export default function SignUpPage() {
 
         <p className="text-center text-sm text-[color:var(--muted)]">
           Already have access?{" "}
-          <Link href="/signin" className="text-[color:var(--accent)]">
+          <Link href="/signin" className="text-[color:var(--accent)] underline">
             Sign in
           </Link>
         </p>

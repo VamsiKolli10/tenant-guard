@@ -27,10 +27,10 @@ function VerificationResult() {
   }, [token]);
 
   return (
-    <div className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--surface)] p-8 text-center shadow-xl shadow-black/5">
+    <div className="card p-8 text-center shadow-xl shadow-black/5">
       <h1 className="font-display text-2xl">Email verification</h1>
       <p className={`mt-4 text-sm ${failed ? "text-red-700" : "text-[color:var(--muted)]"}`}>{message}</p>
-      <p className="mt-6 text-sm"><Link href="/signin" className="text-[color:var(--accent)]">Continue to sign in</Link></p>
+      <p className="mt-6 text-sm"><Link href="/signin" className="text-[color:var(--accent)] underline">Continue to sign in</Link></p>
     </div>
   );
 }

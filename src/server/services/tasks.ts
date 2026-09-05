@@ -9,6 +9,15 @@ import type { DbClient } from "@/server/services/types";
 const CREATE_ROLES: Role[] = ["ADMIN", "MANAGER", "MEMBER"];
 const MANAGE_ROLES: Role[] = ["ADMIN", "MANAGER"];
 
+/**
+ * What a MEMBER may change on a task that was assigned to them but which they
+ * did not create: they advance their own work, they do not re-plan it. Notably
+ * this keeps `assignedToUserId` out of reach, so a member cannot push work
+ * back onto someone else. Members retain full edit rights on tasks they
+ * created themselves.
+ */
+const ASSIGNEE_EDITABLE_FIELDS = new Set(["status", "priority"]);
+
 type CreateTaskInput = {
   orgId: string;
   title: string;
@@ -91,12 +100,28 @@ export async function updateTask(
     throw new NotFoundError("Task not found.");
   }
 
-  if (
-    input.actorRole === "MEMBER" &&
-    existing.createdByUserId !== input.actorUserId &&
-    existing.assignedToUserId !== input.actorUserId
-  ) {
-    throw new AuthorizationError("Not allowed to update this task.");
+  if (input.actorRole === "MEMBER") {
+    const isCreator = existing.createdByUserId === input.actorUserId;
+    const isAssignee = existing.assignedToUserId === input.actorUserId;
+
+    if (!isCreator && !isAssignee) {
+      throw new AuthorizationError("Not allowed to update this task.");
+    }
+
+    if (!isCreator) {
+      const requestedFields = Object.entries(input.data)
+        .filter(([, value]) => value !== undefined)
+        .map(([field]) => field);
+      const disallowed = requestedFields.filter(
+        (field) => !ASSIGNEE_EDITABLE_FIELDS.has(field),
+      );
+
+      if (disallowed.length > 0) {
+        throw new AuthorizationError(
+          `Members may only change ${[...ASSIGNEE_EDITABLE_FIELDS].join(" and ")} on a task assigned to them.`,
+        );
+      }
+    }
   }
 
 
@@ -160,7 +185,9 @@ export async function updateTask(
     input.data.status !== undefined && existing.status !== input.data.status;
 
   const task = await db.task.update({
-    where: { id: existing.id },
+    // orgId in the filter, not just the guard: correctness must not depend on
+    // ambient context being visible.
+    where: { id: existing.id, orgId: input.orgId },
     data: {
       title: input.data.title?.trim(),
       description:
@@ -231,7 +258,7 @@ export async function deleteTask(
   }
 
   const task = await db.task.delete({
-    where: { id: existing.id },
+    where: { id: existing.id, orgId: input.orgId },
   });
 
   await logAuditEvent(db, {
@@ -248,8 +275,22 @@ export async function deleteTask(
   return task;
 }
 
+export type TaskSort = "created" | "dueDate" | "priority";
+
+/**
+ * Priority is an enum, and Postgres orders enums by declaration order — LOW,
+ * MEDIUM, HIGH — so "highest first" is descending. Due date sorts ascending
+ * with nulls last, because a task with no date is not urgent, it is unscheduled.
+ */
+const ORDER_BY: Record<TaskSort, Prisma.TaskOrderByWithRelationInput[]> = {
+  created: [{ createdAt: "desc" }],
+  dueDate: [{ dueDate: { sort: "asc", nulls: "last" } }, { createdAt: "desc" }],
+  priority: [{ priority: "desc" }, { createdAt: "desc" }],
+};
+
 type ListTasksInput = {
   orgId: string;
+  sort?: TaskSort;
   page?: number;
   pageSize?: number;
   status?: TaskStatus;
@@ -307,7 +348,7 @@ export async function listTasks(
     db.task.count({ where }),
     db.task.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy: ORDER_BY[input.sort ?? "created"],
       skip,
       take: pageSize,
     }),

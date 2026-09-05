@@ -8,7 +8,7 @@ export default async function Home() {
   const session = await getServerSession(authOptions);
 
   return (
-    <div className="min-h-screen px-6 py-10 text-[color:var(--foreground)]">
+    <div className="page-wash min-h-screen px-6 py-10 text-[color:var(--foreground)]">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between gap-6">
         <div className="flex items-center gap-3">
           <span className="text-2xl font-semibold tracking-tight">

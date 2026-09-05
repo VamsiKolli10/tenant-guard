@@ -3,74 +3,91 @@
 import Link from "next/link";
 import { useState } from "react";
 
-type Props = {
-  token: string;
-};
+type Status = "idle" | "loading" | "success" | "error";
 
-export function AcceptInvitePanel({ token }: Props) {
-  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">(
-    "idle",
-  );
+export function AcceptInvitePanel({ token }: { token: string }) {
+  const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const [needsSignIn, setNeedsSignIn] = useState(false);
 
   const acceptInvite = async () => {
     setStatus("loading");
     setMessage(null);
+    setNeedsSignIn(false);
 
-    const response = await fetch("/api/invitations/accept", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
-    });
+    try {
+      const response = await fetch("/api/invitations/accept", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
 
-    const payload = await response.json().catch(() => ({}));
-    if (response.status === 401) {
+      const payload = await response.json().catch(() => ({}));
+
+      if (response.status === 401) {
+        setStatus("error");
+        setNeedsSignIn(true);
+        setMessage("Sign in first, then accept this invitation.");
+        return;
+      }
+
+      if (!response.ok) {
+        setStatus("error");
+        setMessage(payload.error || "This invitation could not be accepted.");
+        return;
+      }
+
+      setStatus("success");
+      setMessage("You have joined the workspace.");
+    } catch {
       setStatus("error");
-      setMessage("Please sign in to accept this invite.");
-      return;
+      setMessage("The network request failed. Check your connection and try again.");
     }
-
-    if (!response.ok) {
-      setStatus("error");
-      setMessage(payload.error || "Unable to accept invite.");
-      return;
-    }
-
-    setStatus("success");
-    setMessage("Invite accepted. You can now access the organization.");
   };
 
   return (
-    <div className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--surface)] p-8 text-center">
-      <h1 className="font-display text-2xl">Accept your invite</h1>
+    <div className="card p-8 text-center">
+      <h2 className="font-display text-2xl">Accept your invitation</h2>
       <p className="mt-2 text-sm text-[color:var(--muted)]">
-        Join your organization and start collaborating.
+        Joining adds your account to the workspace with the role the inviter chose.
       </p>
+
       <button
         type="button"
         onClick={acceptInvite}
-        disabled={status === "loading"}
-        className="mt-6 rounded-full bg-[color:var(--accent)] px-6 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 disabled:opacity-60"
+        disabled={status === "loading" || status === "success"}
+        className="btn btn-primary mt-6"
       >
-        {status === "loading" ? "Accepting..." : "Accept invite"}
+        {status === "loading" ? "Accepting…" : "Accept invitation"}
       </button>
-      {message ? (
-        <p className="mt-4 text-sm text-[color:var(--muted)]">{message}</p>
-      ) : null}
-      {status === "error" ? (
+
+      <p aria-live="polite" className="mt-4 min-h-[1.25rem] text-sm">
+        {message ? (
+          <span
+            className={
+              status === "error"
+                ? "text-[color:var(--danger)]"
+                : "text-[color:var(--success)]"
+            }
+            role={status === "error" ? "alert" : undefined}
+          >
+            {message}
+          </span>
+        ) : null}
+      </p>
+
+      {needsSignIn ? (
         <Link
-          href={`/signin?callbackUrl=/invite/${token}`}
-          className="mt-3 block text-sm text-[color:var(--accent)]"
+          href={`/signin?callbackUrl=${encodeURIComponent(`/invite/${token}`)}`}
+          className="btn btn-secondary btn-sm mt-2"
         >
           Sign in to continue
         </Link>
       ) : null}
+
       {status === "success" ? (
-        <Link
-          href="/dashboard"
-          className="mt-3 block text-sm text-[color:var(--accent)]"
-        >
-          Go to dashboard
+        <Link href="/dashboard" className="btn btn-secondary btn-sm mt-2">
+          Go to your workspaces
         </Link>
       ) : null}
     </div>

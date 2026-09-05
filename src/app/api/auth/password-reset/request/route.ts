@@ -24,7 +24,15 @@ export async function POST(req: Request) {
   if (limit.allowed) {
     const issued = await issuePasswordResetToken(email);
     if (issued) {
-      await sendPasswordReset(issued.user.email, issued.token);
+      try {
+        await sendPasswordReset(issued.user.email, issued.token);
+      } catch (error) {
+        // An unconfigured or failing mailer must not change the response.
+        // Previously this threw, so a 500 meant "this account exists" while a
+        // 200 meant it did not — an enumeration oracle triggered by an
+        // operational fault.
+        console.error("password-reset.send_failed", error);
+      }
     }
   }
 

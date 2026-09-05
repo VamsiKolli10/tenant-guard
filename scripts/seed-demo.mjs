@@ -30,11 +30,13 @@ async function seed() {
     update: {
       name: "Demo Admin",
       passwordHash,
+      emailVerifiedAt: new Date(),
     },
     create: {
       email: demoEmail.toLowerCase(),
       name: "Demo Admin",
       passwordHash,
+      emailVerifiedAt: new Date(),
     },
   });
 

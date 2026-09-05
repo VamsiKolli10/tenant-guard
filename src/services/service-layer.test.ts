@@ -10,6 +10,7 @@ import { createUser } from "@/server/services/users";
 import { inviteService } from "@/services/invitations";
 import { membershipService } from "@/services/memberships";
 import { taskService } from "@/services/tasks";
+import { createVerifiedUser } from "@/test/factories";
 
 async function seedOrg() {
   const admin = await createUser({
@@ -167,7 +168,7 @@ it("prevents managers from inviting admins", async () => {
 it("accepts invites, creates memberships, and marks invites accepted", async () => {
   const { org, admin } = await seedOrg();
 
-  const invitee = await createUser({
+  const invitee = await createVerifiedUser({
     email: "invitee2@example.com",
     name: "Invitee",
     password: "password123",

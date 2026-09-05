@@ -2,10 +2,7 @@ import { z } from "zod";
 
 import { jsonError, jsonOk } from "@/server/api";
 import { getSessionUserId } from "@/server/session";
-import {
-  createOrganization,
-  listOrganizationsForUser,
-} from "@/server/services/organizations";
+import { orgService } from "@/services/organizations";
 
 const orgSchema = z.object({
   name: z.string().min(2).max(80),
@@ -17,7 +14,7 @@ export async function GET() {
     return jsonError("Unauthorized.", 401);
   }
 
-  const orgs = await listOrganizationsForUser(userId);
+  const orgs = await orgService.listOrgsForUser(userId);
   return jsonOk(orgs);
 }
 
@@ -39,9 +36,9 @@ export async function POST(req: Request) {
     return jsonError("Invalid organization details.");
   }
 
-  const org = await createOrganization({
+  const org = await orgService.createOrg({
     name: parsed.data.name,
-    ownerId: userId,
+    userId,
   });
 
   return jsonOk(org, 201);

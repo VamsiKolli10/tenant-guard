@@ -12,6 +12,7 @@ function SignInForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [needsVerification, setNeedsVerification] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -27,7 +28,13 @@ function SignInForm() {
 
     setIsSubmitting(false);
     if (result?.error) {
-      setError("Invalid email or password.");
+      const unverified = result.error.includes("EMAIL_NOT_VERIFIED");
+      setNeedsVerification(unverified);
+      setError(
+        unverified
+          ? "Verify your email address before signing in."
+          : "Invalid email or password.",
+      );
       return;
     }
 
@@ -37,7 +44,7 @@ function SignInForm() {
   return (
     <form
       onSubmit={onSubmit}
-      className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--surface)] p-8 shadow-xl shadow-black/5"
+      className="card p-8"
     >
       <div className="space-y-6">
         <div className="space-y-2 text-center">
@@ -48,51 +55,62 @@ function SignInForm() {
         </div>
 
         <div className="space-y-4">
-          <label className="flex flex-col gap-2 text-sm">
+          <label className="field-label">
             Email
             <input
               type="email"
               required
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="rounded-xl border border-[color:var(--border)] bg-white px-4 py-2"
+              className="input"
             />
           </label>
-          <label className="flex flex-col gap-2 text-sm">
+          <label className="field-label">
             Password
             <input
               type="password"
               required
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className="rounded-xl border border-[color:var(--border)] bg-white px-4 py-2"
+              className="input"
             />
           </label>
         </div>
 
         {error ? (
-          <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+          <p role="alert" className="alert alert-danger">
             {error}
+          </p>
+        ) : null}
+
+        {needsVerification ? (
+          <p className="text-center text-sm">
+            <Link
+              href={`/resend-verification?email=${encodeURIComponent(email)}`}
+              className="text-[color:var(--accent)] underline"
+            >
+              Send a new verification link
+            </Link>
           </p>
         ) : null}
 
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full rounded-full bg-[color:var(--foreground)] px-4 py-3 text-sm font-semibold text-[color:var(--surface)] transition hover:opacity-90 disabled:opacity-60"
+          className="btn btn-primary w-full"
         >
           {isSubmitting ? "Signing in..." : "Sign in"}
         </button>
 
         <p className="text-center text-sm">
-          <Link href="/forgot-password" className="text-[color:var(--accent)]">
+          <Link href="/forgot-password" className="text-[color:var(--accent)] underline">
             Forgot your password?
           </Link>
         </p>
 
         <p className="text-center text-sm text-[color:var(--muted)]">
           New here?{" "}
-          <Link href="/signup" className="text-[color:var(--accent)]">
+          <Link href="/signup" className="text-[color:var(--accent)] underline">
             Create an account
           </Link>
         </p>
@@ -105,7 +123,7 @@ export default function SignInPage() {
   return (
     <Suspense
       fallback={
-        <div className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--surface)] p-8 text-center text-sm text-[color:var(--muted)] shadow-xl shadow-black/5">
+        <div className="card p-8 text-center text-sm text-[color:var(--muted)]">
           Loading sign in…
         </div>
       }

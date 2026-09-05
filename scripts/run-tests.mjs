@@ -39,5 +39,18 @@ const run = (command, args) => {
   }
 };
 
-run("npx", ["prisma", "db", "push", "--force-reset", "--skip-generate"]);
+// Build the test database from the real migration history, not from
+// schema.prisma. `prisma db push` only syncs the declarative schema, so raw
+// SQL in migrations — the append-only trigger on "AuditLog", and anything like
+// it added later — would silently not exist in tests while existing in
+// production. `migrate reset` drops, re-creates, and replays every migration,
+// which is what production runs.
+run("npx", [
+  "prisma",
+  "migrate",
+  "reset",
+  "--force",
+  "--skip-generate",
+  "--skip-seed",
+]);
 run("npx", ["vitest", "run"]);

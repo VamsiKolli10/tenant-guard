@@ -27,14 +27,14 @@ function ResetPasswordForm() {
   };
 
   return (
-    <form onSubmit={onSubmit} className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--surface)] p-8 shadow-xl shadow-black/5">
+    <form onSubmit={onSubmit} className="card p-8">
       <div className="space-y-6">
         <h1 className="text-center font-display text-2xl">Choose a new password</h1>
-        <label className="flex flex-col gap-2 text-sm">New password<input type="password" required minLength={12} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} className="rounded-xl border border-[color:var(--border)] bg-white px-4 py-2" /></label>
+        <label className="field-label">New password<input type="password" required minLength={12} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} className="input" /></label>
         {message ? <p className="rounded-xl border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700">{message}</p> : null}
-        {error ? <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p> : null}
+        {error ? <p className="alert alert-danger">{error}</p> : null}
         <button type="submit" disabled={!token} className="w-full rounded-full bg-[color:var(--foreground)] px-4 py-3 text-sm font-semibold text-[color:var(--surface)] disabled:opacity-60">Update password</button>
-        <p className="text-center text-sm"><Link href="/signin" className="text-[color:var(--accent)]">Return to sign in</Link></p>
+        <p className="text-center text-sm"><Link href="/signin" className="text-[color:var(--accent)] underline">Return to sign in</Link></p>
       </div>
     </form>
   );

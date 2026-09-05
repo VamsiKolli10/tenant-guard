@@ -18,16 +18,34 @@ if (!process.env.DATABASE_URL) {
 
 import { prisma } from "@/server/db";
 
+/**
+ * Cleanup runs as a single TRUNCATE rather than a chain of deleteMany calls,
+ * for two reasons that both come from hardening the application:
+ *
+ *  - Model queries now pass through the tenant guard, which refuses a
+ *    tenant-scoped delete with no organization bound. Raw SQL sits below the
+ *    Prisma client extension, so it is unaffected.
+ *  - "AuditLog" carries an append-only trigger that rejects row DELETEs.
+ *    TRUNCATE does not fire row-level triggers, so the audit table can still
+ *    be reset between tests without weakening the guarantee in production.
+ */
+const TABLES = [
+  "AuditLog",
+  "Invitation",
+  "Task",
+  "Membership",
+  "Organization",
+  "EmailVerificationToken",
+  "PasswordResetToken",
+  "AuthRateLimit",
+  "User",
+];
+
 beforeEach(async () => {
-  await prisma.authRateLimit.deleteMany();
-  await prisma.emailVerificationToken.deleteMany();
-  await prisma.passwordResetToken.deleteMany();
-  await prisma.auditLog.deleteMany();
-  await prisma.invitation.deleteMany();
-  await prisma.task.deleteMany();
-  await prisma.membership.deleteMany();
-  await prisma.organization.deleteMany();
-  await prisma.user.deleteMany();
+  const list = TABLES.map((table) => `"${table}"`).join(", ");
+  await prisma.$executeRawUnsafe(
+    `TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE;`,
+  );
 });
 
 afterAll(async () => {

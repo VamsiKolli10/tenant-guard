@@ -37,7 +37,7 @@ Next.js App Router · React · TypeScript · NextAuth · Prisma · PostgreSQL ·
 
 ### Prerequisites
 
-- Node.js 20 or newer
+- Node.js 20.9 or newer (the repo pins 22 in `.nvmrc`; run `nvm use`)
 - npm
 - PostgreSQL 14 or newer
 
@@ -433,12 +433,14 @@ The repository includes checked-in Prisma migrations. Use `npx prisma migrate de
 
 ## Security notes
 
-- Tenant isolation is enforced by checking membership before organization-scoped reads and writes.
-- Role checks are centralized in service functions such as `requireMembership` and `requireRole`.
-- Invite tokens are generated randomly and stored only as SHA-256 hashes.
-- Email-bound invites can only be accepted by a user with the matching email.
-- Audit logs are written for sensitive lifecycle events.
+- Tenant isolation has two layers. Membership is checked before any organization-scoped read or write, and a Prisma client extension (`src/server/tenant-guard.ts`) independently requires that every query against `Membership`, `Invitation`, `Task`, or `AuditLog` names the organization it targets: a query naming a different organization than the request is refused, and one naming none at all is refused. Deliberate cross-tenant access uses the separate `prismaUnscoped` client, whose single legitimate use is resolving an invitation from its token, where the caller belongs to no organization yet. The ambient `AsyncLocalStorage` context is a convenience only — it is not visible to queries running inside a Prisma interactive transaction, so the enforced property is that queries carry their own `orgId`, not that a context was set.
+- Role checks are centralized in service functions such as `requireMembership` and `requireRole`. Route handlers and components import the guarded facade in `src/services/*`; an ESLint rule blocks direct imports of the unguarded `src/server/services/*` layer.
+- Invite tokens are generated randomly and stored only as SHA-256 hashes. Neither the token nor its hash appears in any API response.
+- Email-bound invites can only be accepted by a user with the matching email, and only once that user has verified their address. Sign-in requires a verified address as well.
+- Audit logs are written for sensitive lifecycle events and are append-only in the database: a trigger on `"AuditLog"` rejects `UPDATE` and `DELETE`, so a compromised application role cannot rewrite history. Retention pruning is a privileged, deliberate operation — see the notes in `prisma/migrations/20260905000000_audit_append_only/migration.sql`.
+- Authentication rate limits are applied on both email and client IP, so failed attempts against one account cannot lock its owner out.
 - Test database resets are guarded to reduce the risk of wiping a non-test database.
+- Known findings and their status are tracked in [`docs/security/security-review-2026-09-05.md`](docs/security/security-review-2026-09-05.md).
 
 ## Current limitations
 

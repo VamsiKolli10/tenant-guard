@@ -6,7 +6,12 @@ import { prisma } from "@/server/db";
 import type { DbClient } from "@/server/services/types";
 
 type ConsumeRateLimitInput = {
-  action: "credentials-login" | "register" | "password-reset";
+  action:
+    | "credentials-login"
+    | "register"
+    | "password-reset"
+    | "verify-email-resend"
+    | "password-change";
   identifier: string;
   limit: number;
   windowMs: number;

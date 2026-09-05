@@ -24,13 +24,20 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/tenant_guard_test
       DIRECT_URL: postgresql://postgres:postgres@localhost:5432/tenant_guard_test
       TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/tenant_guard_test
+      # Required by the auth rate limiter, which derives its key HMAC from this.
+      # Without it every auth test throws. A fixed literal is correct here: CI
+      # signs nothing that outlives the run, and a repository secret would make
+      # forks fail for no security benefit.
+      NEXTAUTH_SECRET: ci-only-not-a-real-secret
+      NEXTAUTH_URL: http://localhost:3000
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version-file: ".nvmrc"
           cache: "npm"
       - name: Install dependencies
         run: npm ci

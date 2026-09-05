@@ -6,6 +6,16 @@ import { logAuditEvent } from "@/server/services/audit";
 import type { DbClient } from "@/server/services/types";
 import type { Role } from "@prisma/client";
 
+/**
+ * Fields safe to return across an API boundary. Never `include: { user: true }` —
+ * that materialises passwordHash and emailVerifiedAt into response bodies.
+ */
+export const PUBLIC_USER_SELECT = {
+  id: true,
+  name: true,
+  email: true,
+} as const;
+
 type ChangeRoleInput = {
   orgId: string;
   memberUserId: string;
@@ -31,7 +41,7 @@ export async function getMembership(
 export async function listMembers(orgId: string, db: DbClient = prisma) {
   return db.membership.findMany({
     where: { orgId },
-    include: { user: true },
+    include: { user: { select: PUBLIC_USER_SELECT } },
     orderBy: { createdAt: "asc" },
   });
 }
@@ -48,7 +58,7 @@ export async function changeMemberRole(
           orgId: input.orgId,
         },
       },
-      include: { user: true },
+      include: { user: { select: PUBLIC_USER_SELECT } },
     });
 
     if (!membership) {
@@ -66,9 +76,9 @@ export async function changeMemberRole(
 
     const priorRole = membership.role;
     const updated = await tx.membership.update({
-      where: { id: membership.id },
+      where: { id: membership.id, orgId: input.orgId },
       data: { role: input.role },
-      include: { user: true },
+      include: { user: { select: PUBLIC_USER_SELECT } },
     });
 
     await logAuditEvent(tx, {
@@ -125,7 +135,9 @@ export async function removeMember(
       where: { orgId: input.orgId, assignedToUserId: input.memberUserId },
       data: { assignedToUserId: null },
     });
-    await tx.membership.delete({ where: { id: membership.id } });
+    await tx.membership.delete({
+      where: { id: membership.id, orgId: input.orgId },
+    });
     await logAuditEvent(tx, {
       orgId: input.orgId,
       actorUserId: input.actorId,

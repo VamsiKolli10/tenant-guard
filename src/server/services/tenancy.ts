@@ -16,6 +16,10 @@ export async function requireOrgRole(
   input: RequireOrgRoleInput,
   db: DbClient = prisma,
 ) {
+  // See requireMembership: context precedes the lookup because the lookup is
+  // itself tenant-scoped.
+  setOrgContext(input.orgId);
+
   const membership = await db.membership.findUnique({
     where: {
       userId_orgId: {
@@ -37,6 +41,5 @@ export async function requireOrgRole(
     return null;
   }
 
-  setOrgContext(input.orgId);
   return membership;
 }

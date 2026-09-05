@@ -13,6 +13,12 @@ export async function requireMembership(
   userId: string,
   db: DbClient = prisma,
 ) {
+  // Bind the context first: the membership lookup is itself a tenant-scoped
+  // query, and the guard needs to know which organization it may touch. This
+  // states the subject of the request, not the caller's right to it — that is
+  // decided by the lookup immediately below.
+  setOrgContext(orgId);
+
   const membership = await db.membership.findUnique({
     where: {
       userId_orgId: {
@@ -26,7 +32,6 @@ export async function requireMembership(
     throw new AuthorizationError("Forbidden.");
   }
 
-  setOrgContext(orgId);
   return membership;
 }
 

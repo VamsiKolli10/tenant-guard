@@ -1,119 +1,50 @@
-import { Role, TaskPriority, TaskStatus } from "@prisma/client";
+import { TaskPriority, TaskStatus } from "@prisma/client";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { InvitePanel } from "@/components/invite-panel";
-import { AuthorizationError } from "@/server/errors";
+import {
+  createTaskAction,
+  deleteTaskAction,
+  updateTaskStatusAction,
+} from "./actions";
+import { ConfirmButton } from "@/components/confirm-button";
+import { FormattedDate } from "@/components/formatted-date";
+import { SubmitButton } from "@/components/submit-button";
+import {
+  Alert,
+  Card,
+  DueBadge,
+  EmptyState,
+  Field,
+  PriorityBadge,
+  SectionHeading,
+  TaskStatusBadge,
+} from "@/components/ui";
 import { getSessionUserId } from "@/server/session";
 import { membershipService } from "@/services/memberships";
-import { orgService } from "@/services/organizations";
 import { taskService } from "@/services/tasks";
 import { requireMembership } from "@/services/tenancy";
 
 type PageProps = {
-  params: { orgId: string };
-  searchParams: Record<string, string | string[] | undefined>;
+  params: Promise<{ orgId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-function normalizeReturnTo(orgId: string, returnTo: string | null) {
-  const fallback = `/orgs/${orgId}`;
-  if (!returnTo || !returnTo.startsWith("/")) {
-    return fallback;
-  }
-  if (!returnTo.startsWith(`/orgs/${orgId}`)) {
-    return fallback;
-  }
-  return returnTo;
+const NOTICE_KEYS = new Set(["error", "notice"]);
+
+function readParam(
+  source: Record<string, string | string[] | undefined>,
+  key: string,
+) {
+  const value = source[key];
+  const single = Array.isArray(value) ? value[0] : value;
+  return single && single.length > 0 ? single : undefined;
 }
 
-function withSearchParam(path: string, key: string, value: string) {
-  const url = new URL(path, "http://localhost");
-  url.searchParams.set(key, value);
-  return `${url.pathname}${url.search}`;
-}
+export default async function TasksPage({ params, searchParams }: PageProps) {
+  const { orgId } = await params;
+  const query = await searchParams;
 
-function withoutSearchParam(path: string, key: string) {
-  const url = new URL(path, "http://localhost");
-  url.searchParams.delete(key);
-  return `${url.pathname}${url.search}`;
-}
-
-async function createTaskAction(formData: FormData) {
-  "use server";
-
-  const userId = await getSessionUserId();
-  if (!userId) {
-    redirect("/signin");
-  }
-
-  const orgId = String(formData.get("orgId") || "");
-  const returnTo = normalizeReturnTo(orgId, String(formData.get("returnTo") || ""));
-
-  const title = String(formData.get("title") || "").trim();
-  const description = String(formData.get("description") || "").trim();
-  const status = String(formData.get("status") || "TODO") as TaskStatus;
-  const priority = String(formData.get("priority") || "MEDIUM") as TaskPriority;
-  const assignedToUserId = String(formData.get("assignedToUserId") || "").trim();
-
-  if (!title) {
-    redirect(withSearchParam(returnTo, "taskError", "Title is required."));
-  }
-
-  try {
-    await taskService.createTask({
-      orgId,
-      userId,
-      payload: {
-        title,
-        description: description || undefined,
-        status: Object.values(TaskStatus).includes(status) ? status : "TODO",
-        priority: Object.values(TaskPriority).includes(priority) ? priority : "MEDIUM",
-        assignedToUserId: assignedToUserId || null,
-      },
-    });
-  } catch (error) {
-    const message =
-      error instanceof AuthorizationError ? error.message : "Unable to create task.";
-    redirect(withSearchParam(returnTo, "taskError", message));
-  }
-
-  redirect(withoutSearchParam(returnTo, "taskError"));
-}
-
-async function changeRoleAction(formData: FormData) {
-  "use server";
-
-  const userId = await getSessionUserId();
-  if (!userId) {
-    redirect("/signin");
-  }
-
-  const orgId = String(formData.get("orgId") || "");
-  const returnTo = normalizeReturnTo(orgId, String(formData.get("returnTo") || ""));
-  const memberUserId = String(formData.get("userId") || "");
-  const role = String(formData.get("role") || "") as Role;
-
-  if (!Object.values(Role).includes(role)) {
-    redirect(withSearchParam(returnTo, "roleError", "Invalid role selection."));
-  }
-
-  try {
-    await membershipService.changeRole({
-      orgId,
-      userId,
-      memberUserId,
-      role,
-    });
-  } catch (error) {
-    const message =
-      error instanceof AuthorizationError ? error.message : "Unable to update role.";
-    redirect(withSearchParam(returnTo, "roleError", message));
-  }
-
-  redirect(withoutSearchParam(returnTo, "roleError"));
-}
-
-export default async function OrgPage({ params, searchParams }: PageProps) {
   const userId = await getSessionUserId();
   if (!userId) {
     redirect("/signin");
@@ -121,421 +52,355 @@ export default async function OrgPage({ params, searchParams }: PageProps) {
 
   let membership: Awaited<ReturnType<typeof requireMembership>>;
   try {
-    membership = await requireMembership(params.orgId, userId);
+    membership = await requireMembership(orgId, userId);
   } catch {
     redirect("/dashboard");
   }
 
-  let org: Awaited<ReturnType<typeof orgService.getOrg>>;
-  try {
-    org = await orgService.getOrg({
-      orgId: params.orgId,
-      userId,
-    });
-  } catch {
-    redirect("/dashboard");
-  }
+  const canAdminister = membership.role === "ADMIN" || membership.role === "MANAGER";
 
-  const rawPage = typeof searchParams.page === "string" ? Number(searchParams.page) : undefined;
-  const rawPageSize =
-    typeof searchParams.pageSize === "string" ? Number(searchParams.pageSize) : undefined;
-  const page = rawPage && Number.isFinite(rawPage) ? rawPage : undefined;
-  const pageSize = rawPageSize && Number.isFinite(rawPageSize) ? rawPageSize : undefined;
-  const statusParam = typeof searchParams.status === "string" ? searchParams.status : undefined;
-  const assignedToUserIdParam =
-    typeof searchParams.assignedToUserId === "string"
-      ? searchParams.assignedToUserId
-      : undefined;
-  const searchParam = typeof searchParams.search === "string" ? searchParams.search : undefined;
-  const fromParam = typeof searchParams.from === "string" ? new Date(searchParams.from) : undefined;
-  const toParam = typeof searchParams.to === "string" ? new Date(searchParams.to) : undefined;
-  const fromValue = typeof searchParams.from === "string" ? searchParams.from : "";
-  const toValue = typeof searchParams.to === "string" ? searchParams.to : "";
-  const taskError =
-    typeof searchParams.taskError === "string" ? searchParams.taskError : undefined;
-  const roleError =
-    typeof searchParams.roleError === "string" ? searchParams.roleError : undefined;
+  const statusParam = readParam(query, "status");
+  const assigneeParam = readParam(query, "assignedToUserId");
+  const searchParam = readParam(query, "search");
+  const fromParam = readParam(query, "from");
+  const toParam = readParam(query, "to");
+  const pageParam = Number(readParam(query, "page") ?? "1");
+  const sortParam = readParam(query, "sort");
+  const sort =
+    sortParam === "dueDate" || sortParam === "priority" ? sortParam : "created";
 
-  const status = statusParam && Object.values(TaskStatus).includes(statusParam as TaskStatus)
+  const status = Object.values(TaskStatus).includes(statusParam as TaskStatus)
     ? (statusParam as TaskStatus)
     : undefined;
+  const from = fromParam ? new Date(fromParam) : undefined;
+  const to = toParam ? new Date(toParam) : undefined;
 
-  const dateFrom = fromParam && !Number.isNaN(fromParam.valueOf()) ? fromParam : undefined;
-  const dateTo = toParam && !Number.isNaN(toParam.valueOf()) ? toParam : undefined;
-
-  const tasksResult = await taskService.listTasks({
-    orgId: params.orgId,
+  const now = new Date();
+  const tasks = await taskService.listTasks({
+    orgId,
     userId,
-    page,
-    limit: pageSize,
+    sort,
+    page: Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1,
     filters: {
       status,
-      assignedToUserId: assignedToUserIdParam,
+      assignedToUserId: assigneeParam,
       search: searchParam,
-      dateFrom,
-      dateTo,
+      dateFrom: from && !Number.isNaN(from.valueOf()) ? from : undefined,
+      dateTo: to && !Number.isNaN(to.valueOf()) ? to : undefined,
     },
   });
 
-  const canViewMembers = membership.role === "ADMIN" || membership.role === "MANAGER";
-  const members = canViewMembers
-    ? await membershipService.listMembers({
-        orgId: params.orgId,
-        userId,
-      })
+  const members = canAdminister
+    ? await membershipService.listMembers({ orgId, userId })
     : [];
-  const memberMap = new Map(
-    members.map((member) => [member.userId, member.user?.name || member.user?.email || ""] as const),
+  const nameFor = new Map(
+    members.map((m) => [m.userId, m.user.name || m.user.email] as const),
   );
 
   const resolveAssignee = (assignedToUserId: string | null) => {
-    if (!assignedToUserId) {
-      return "Unassigned";
-    }
-    if (assignedToUserId === userId) {
-      return "You";
-    }
-    return memberMap.get(assignedToUserId) || "Assigned";
+    if (!assignedToUserId) return "Unassigned";
+    if (assignedToUserId === userId) return "You";
+    return nameFor.get(assignedToUserId) ?? "A teammate";
   };
 
-  const canCreateTasks = true;
-  const inviteRoles =
-    membership.role === "ADMIN"
-      ? [Role.ADMIN, Role.MANAGER, Role.MEMBER]
-      : membership.role === "MANAGER"
-        ? [Role.MANAGER, Role.MEMBER]
-        : [];
-  const buildReturnTo = () => {
-    const query = new URLSearchParams();
-    for (const [key, value] of Object.entries(searchParams)) {
-      if (!value || key === "taskError" || key === "roleError") {
-        continue;
-      }
-      query.set(key, Array.isArray(value) ? value[0] : value);
+  const buildLink = (overrides: Record<string, string | undefined>) => {
+    const next = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      const single = Array.isArray(value) ? value[0] : value;
+      if (!single || NOTICE_KEYS.has(key)) continue;
+      next.set(key, single);
     }
-    const queryString = query.toString();
-    return queryString ? `/orgs/${params.orgId}?${queryString}` : `/orgs/${params.orgId}`;
-  };
-  const returnTo = buildReturnTo();
-  const buildPageLink = (nextPage: number) => {
-    const query = new URLSearchParams();
-    for (const [key, value] of Object.entries(searchParams)) {
-      if (!value || key === "page") {
-        continue;
-      }
-      query.set(key, Array.isArray(value) ? value[0] : value);
+    for (const [key, value] of Object.entries(overrides)) {
+      if (value === undefined) next.delete(key);
+      else next.set(key, value);
     }
-    query.set("page", String(nextPage));
-    return `/orgs/${params.orgId}?${query.toString()}`;
+    const qs = next.toString();
+    return qs ? `/orgs/${orgId}?${qs}` : `/orgs/${orgId}`;
   };
+
+  const returnTo = buildLink({});
+  const error = readParam(query, "error");
+  const notice = readParam(query, "notice");
+  const hasFilters = Boolean(
+    status || assigneeParam || searchParam || fromParam || toParam || sortParam,
+  );
 
   return (
-    <div className="min-h-screen px-6 py-10">
-      <div className="mx-auto w-full max-w-6xl space-y-8">
-        <header className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-sm uppercase tracking-[0.2em] text-[color:var(--muted)]">
-              Organization
-            </p>
-            <h1 className="font-display text-3xl">{org.name}</h1>
-            <p className="mt-1 text-sm text-[color:var(--muted)]">
-              Your role: {membership.role}
-            </p>
-          </div>
-          <Link
-            href="/dashboard"
-            className="rounded-full border border-[color:var(--border)] px-4 py-2 text-sm transition hover:bg-[color:var(--surface)]"
-          >
-            Back to dashboard
-          </Link>
-        </header>
+    <div className="space-y-6">
+      {error ? <Alert tone="danger">{error}</Alert> : null}
+      {notice ? <Alert tone="success">{notice}</Alert> : null}
 
-        <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-          <section className="space-y-6">
-            <div className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--surface)] p-6">
-              <h2 className="font-display text-xl">Tasks</h2>
-              <form
-                method="get"
-                className="mt-4 flex flex-wrap items-end gap-3 text-sm"
-              >
-                <label className="flex flex-col gap-2">
-                  Search
-                  <input
-                    type="text"
-                    name="search"
-                    defaultValue={searchParam || ""}
-                    className="min-w-[200px] rounded-xl border border-[color:var(--border)] bg-white px-3 py-2"
-                  />
-                </label>
-                <label className="flex flex-col gap-2">
-                  Status
-                  <select
-                    name="status"
-                    defaultValue={statusParam || ""}
-                    className="rounded-xl border border-[color:var(--border)] bg-white px-3 py-2"
-                  >
-                    <option value="">Any</option>
-                    <option value={TaskStatus.TODO}>Todo</option>
-                    <option value={TaskStatus.IN_PROGRESS}>In progress</option>
-                    <option value={TaskStatus.DONE}>Done</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-2">
-                  Assignee
-                  <select
-                    name="assignedToUserId"
-                    defaultValue={assignedToUserIdParam || ""}
-                    className="rounded-xl border border-[color:var(--border)] bg-white px-3 py-2"
-                  >
-                    <option value="">Anyone</option>
-                    {canViewMembers ? (
-                      members.map((member) => (
-                        <option key={member.id} value={member.userId}>
-                          {member.user?.name || member.user?.email}
-                        </option>
-                      ))
-                    ) : (
-                      <option value={userId}>You</option>
-                    )}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-2">
-                  From
-                  <input
-                    type="date"
-                    name="from"
-                    defaultValue={fromValue}
-                    className="rounded-xl border border-[color:var(--border)] bg-white px-3 py-2"
-                  />
-                </label>
-                <label className="flex flex-col gap-2">
-                  To
-                  <input
-                    type="date"
-                    name="to"
-                    defaultValue={toValue}
-                    className="rounded-xl border border-[color:var(--border)] bg-white px-3 py-2"
-                  />
-                </label>
-                <button
-                  type="submit"
-                  className="rounded-full bg-[color:var(--foreground)] px-4 py-2 text-sm font-semibold text-[color:var(--surface)] transition hover:opacity-90"
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <div className="space-y-6">
+          <Card>
+            <SectionHeading
+              title="Tasks"
+              description={`${tasks.total} ${tasks.total === 1 ? "task" : "tasks"} in this workspace`}
+            />
+
+            <form method="get" className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <Field label="Search" htmlFor="search">
+                <input
+                  id="search"
+                  type="search"
+                  name="search"
+                  defaultValue={searchParam ?? ""}
+                  placeholder="Title or description"
+                  className="input"
+                />
+              </Field>
+
+              <Field label="Status" htmlFor="status">
+                <select id="status" name="status" defaultValue={statusParam ?? ""} className="select">
+                  <option value="">Any status</option>
+                  <option value={TaskStatus.TODO}>Todo</option>
+                  <option value={TaskStatus.IN_PROGRESS}>In progress</option>
+                  <option value={TaskStatus.DONE}>Done</option>
+                </select>
+              </Field>
+
+              <Field label="Assignee" htmlFor="assignedToUserId">
+                <select
+                  id="assignedToUserId"
+                  name="assignedToUserId"
+                  defaultValue={assigneeParam ?? ""}
+                  className="select"
                 >
-                  Filter
+                  <option value="">Anyone</option>
+                  <option value={userId}>Me</option>
+                  {members
+                    .filter((m) => m.userId !== userId)
+                    .map((m) => (
+                      <option key={m.id} value={m.userId}>
+                        {m.user.name || m.user.email}
+                      </option>
+                    ))}
+                </select>
+              </Field>
+
+              <Field label="Created from" htmlFor="from">
+                <input id="from" type="date" name="from" defaultValue={fromParam ?? ""} className="input" />
+              </Field>
+
+              <Field label="Created to" htmlFor="to">
+                <input id="to" type="date" name="to" defaultValue={toParam ?? ""} className="input" />
+              </Field>
+
+              <Field label="Sort by" htmlFor="sort">
+                <select id="sort" name="sort" defaultValue={sort} className="select">
+                  <option value="created">Newest first</option>
+                  <option value="dueDate">Due date</option>
+                  <option value="priority">Priority</option>
+                </select>
+              </Field>
+
+              <div className="flex items-end gap-2">
+                <button type="submit" className="btn btn-primary">
+                  Apply filters
                 </button>
-              </form>
-
-              <div className="mt-6 space-y-3">
-                {taskError ? (
-                  <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
-                    {taskError}
-                  </p>
+                {hasFilters ? (
+                  <Link href={`/orgs/${orgId}`} className="btn btn-secondary">
+                    Clear
+                  </Link>
                 ) : null}
-                {tasksResult.items.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-[color:var(--border)] bg-white/70 px-4 py-6 text-sm text-[color:var(--muted)]">
-                    No tasks match your filters yet.
-                  </div>
-                ) : (
-                  tasksResult.items.map((task) => (
-                    <div
-                      key={task.id}
-                      className="rounded-2xl border border-[color:var(--border)] bg-white/70 p-4"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p className="font-medium">{task.title}</p>
-                          <p className="text-xs text-[color:var(--muted)]">
-                            {task.status.replace("_", " ")} •{" "}
-                            {task.priority.toLowerCase()} priority •{" "}
-                            {resolveAssignee(task.assignedToUserId)}
-                          </p>
-                        </div>
-                        <span className="text-xs text-[color:var(--muted)]">
-                          {task.createdAt.toLocaleDateString()}
-                        </span>
-                      </div>
-                      {task.description ? (
-                        <p className="mt-2 text-sm text-[color:var(--muted)]">
-                          {task.description}
-                        </p>
-                      ) : null}
-                    </div>
-                  ))
-                )}
               </div>
+            </form>
 
-              <div className="mt-4 flex items-center justify-between text-xs text-[color:var(--muted)]">
+            <div className="mt-6 space-y-3">
+              {tasks.items.length === 0 ? (
+                <EmptyState
+                  title={hasFilters ? "No tasks match these filters" : "No tasks yet"}
+                  hint={
+                    hasFilters
+                      ? "Try widening the date range or clearing the status filter."
+                      : "Create the first task using the form beside this list."
+                  }
+                  action={
+                    hasFilters ? (
+                      <Link href={`/orgs/${orgId}`} className="btn btn-secondary btn-sm">
+                        Clear filters
+                      </Link>
+                    ) : undefined
+                  }
+                />
+              ) : (
+                <ul className="space-y-3">
+                  {tasks.items.map((task) => {
+                    const isCreator = task.createdByUserId === userId;
+                    const isAssignee = task.assignedToUserId === userId;
+                    const canChangeStatus = canAdminister || isCreator || isAssignee;
+                    const canDelete = canAdminister;
+
+                    return (
+                      <li key={task.id} className="card-inset p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-medium">{task.title}</p>
+                            <p className="mt-1 text-xs text-[color:var(--muted)]">
+                              {resolveAssignee(task.assignedToUserId)}
+                              {task.dueDate ? (
+                                <>
+                                  {" · due "}
+                                  <FormattedDate iso={task.dueDate.toISOString()} />
+                                </>
+                              ) : null}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {task.dueDate && task.status !== "DONE" ? (
+                              <DueBadge due={task.dueDate} now={now} />
+                            ) : null}
+                            <TaskStatusBadge status={task.status} />
+                            <PriorityBadge priority={task.priority} />
+                          </div>
+                        </div>
+
+                        {task.description ? (
+                          <p className="mt-3 text-sm text-[color:var(--muted-strong)]">
+                            {task.description}
+                          </p>
+                        ) : null}
+
+                        {canChangeStatus || canDelete ? (
+                          <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-[color:var(--border)] pt-3">
+                            {canChangeStatus ? (
+                              <form action={updateTaskStatusAction} className="flex items-center gap-2">
+                                <input type="hidden" name="orgId" value={orgId} />
+                                <input type="hidden" name="returnTo" value={returnTo} />
+                                <input type="hidden" name="taskId" value={task.id} />
+                                <label htmlFor={`status-${task.id}`} className="text-xs text-[color:var(--muted)]">
+                                  Status
+                                </label>
+                                <select
+                                  id={`status-${task.id}`}
+                                  name="status"
+                                  defaultValue={task.status}
+                                  className="select w-auto py-1 text-xs"
+                                >
+                                  <option value={TaskStatus.TODO}>Todo</option>
+                                  <option value={TaskStatus.IN_PROGRESS}>In progress</option>
+                                  <option value={TaskStatus.DONE}>Done</option>
+                                </select>
+                                <button type="submit" className="btn btn-secondary btn-sm">
+                                  Save
+                                </button>
+                              </form>
+                            ) : null}
+
+                            {canDelete ? (
+                              <form action={deleteTaskAction} className="ml-auto">
+                                <input type="hidden" name="orgId" value={orgId} />
+                                <input type="hidden" name="returnTo" value={returnTo} />
+                                <input type="hidden" name="taskId" value={task.id} />
+                                <ConfirmButton
+                                  label="Delete"
+                                  confirmLabel="Delete permanently"
+                                  question={`Delete "${task.title}"?`}
+                                />
+                              </form>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
+            {tasks.totalPages > 1 ? (
+              <nav
+                aria-label="Task pages"
+                className="mt-5 flex items-center justify-between border-t border-[color:var(--border)] pt-4 text-sm text-[color:var(--muted)]"
+              >
                 <span>
-                  Page {tasksResult.page} of {tasksResult.totalPages}
+                  Page {tasks.page} of {tasks.totalPages}
                 </span>
                 <div className="flex gap-2">
-                  {tasksResult.page > 1 ? (
+                  {tasks.page > 1 ? (
                     <Link
-                      href={buildPageLink(tasksResult.page - 1)}
-                      className="rounded-full border border-[color:var(--border)] px-3 py-1"
+                      href={buildLink({ page: String(tasks.page - 1) })}
+                      className="btn btn-secondary btn-sm"
+                      rel="prev"
                     >
-                      Prev
+                      Previous
                     </Link>
                   ) : null}
-                  {tasksResult.page < tasksResult.totalPages ? (
+                  {tasks.page < tasks.totalPages ? (
                     <Link
-                      href={buildPageLink(tasksResult.page + 1)}
-                      className="rounded-full border border-[color:var(--border)] px-3 py-1"
+                      href={buildLink({ page: String(tasks.page + 1) })}
+                      className="btn btn-secondary btn-sm"
+                      rel="next"
                     >
                       Next
                     </Link>
                   ) : null}
                 </div>
-              </div>
+              </nav>
+            ) : null}
+          </Card>
+        </div>
+
+        <Card as="aside">
+          <SectionHeading title="Create a task" description="Every member can add work." />
+          <form action={createTaskAction} className="mt-5 space-y-4">
+            <input type="hidden" name="orgId" value={orgId} />
+            <input type="hidden" name="returnTo" value={returnTo} />
+
+            <Field label="Title" htmlFor="title">
+              <input id="title" name="title" required minLength={2} maxLength={200} className="input" />
+            </Field>
+
+            <Field label="Description" htmlFor="description" hint="Optional context for whoever picks this up.">
+              <textarea id="description" name="description" rows={3} maxLength={2000} className="textarea" />
+            </Field>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Status" htmlFor="new-status">
+                <select id="new-status" name="status" defaultValue={TaskStatus.TODO} className="select">
+                  <option value={TaskStatus.TODO}>Todo</option>
+                  <option value={TaskStatus.IN_PROGRESS}>In progress</option>
+                  <option value={TaskStatus.DONE}>Done</option>
+                </select>
+              </Field>
+
+              <Field label="Priority" htmlFor="priority">
+                <select id="priority" name="priority" defaultValue={TaskPriority.MEDIUM} className="select">
+                  <option value={TaskPriority.LOW}>Low</option>
+                  <option value={TaskPriority.MEDIUM}>Medium</option>
+                  <option value={TaskPriority.HIGH}>High</option>
+                </select>
+              </Field>
             </div>
 
-            {canCreateTasks ? (
-              <section className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--surface)] p-6">
-                <h2 className="font-display text-xl">Create a task</h2>
-                <form action={createTaskAction} className="mt-4 space-y-4 text-sm">
-                  <input type="hidden" name="orgId" value={params.orgId} />
-                  <input type="hidden" name="returnTo" value={returnTo} />
-                  <label className="flex flex-col gap-2">
-                    Title
-                    <input
-                      type="text"
-                      name="title"
-                      required
-                      className="rounded-xl border border-[color:var(--border)] bg-white px-4 py-2"
-                    />
-                  </label>
-                  <label className="flex flex-col gap-2">
-                    Description
-                    <textarea
-                      name="description"
-                      rows={3}
-                      className="rounded-xl border border-[color:var(--border)] bg-white px-4 py-2"
-                    />
-                  </label>
-                  <div className="flex flex-wrap gap-3">
-                    <label className="flex flex-col gap-2">
-                      Status
-                      <select
-                        name="status"
-                        className="rounded-xl border border-[color:var(--border)] bg-white px-4 py-2"
-                      >
-                        <option value={TaskStatus.TODO}>Todo</option>
-                        <option value={TaskStatus.IN_PROGRESS}>In progress</option>
-                        <option value={TaskStatus.DONE}>Done</option>
-                      </select>
-                    </label>
-                    <label className="flex flex-col gap-2">
-                      Priority
-                      <select
-                        name="priority"
-                        defaultValue={TaskPriority.MEDIUM}
-                        className="rounded-xl border border-[color:var(--border)] bg-white px-4 py-2"
-                      >
-                        <option value={TaskPriority.LOW}>Low</option>
-                        <option value={TaskPriority.MEDIUM}>Medium</option>
-                        <option value={TaskPriority.HIGH}>High</option>
-                      </select>
-                    </label>
-                    <label className="flex flex-col gap-2">
-                      Assignee
-                      <select
-                        name="assignedToUserId"
-                        className="rounded-xl border border-[color:var(--border)] bg-white px-4 py-2"
-                      >
-                        <option value="">Unassigned</option>
-                        {canViewMembers ? (
-                          members.map((member) => (
-                            <option key={member.id} value={member.userId}>
-                              {member.user?.name || member.user?.email}
-                            </option>
-                          ))
-                        ) : (
-                          <option value={userId}>You</option>
-                        )}
-                      </select>
-                    </label>
-                  </div>
-                  <button
-                    type="submit"
-                    className="rounded-full bg-[color:var(--accent)] px-5 py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5"
-                  >
-                    Create task
-                  </button>
-                </form>
-              </section>
-            ) : null}
-          </section>
+            <Field label="Due date" htmlFor="dueDate">
+              <input id="dueDate" type="date" name="dueDate" className="input" />
+            </Field>
 
-          <aside className="space-y-6">
-            <InvitePanel
-              orgId={params.orgId}
-              allowedRoles={inviteRoles}
-            />
-
-            {canViewMembers ? (
-              <section className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--surface)] p-6">
-                <h2 className="font-display text-xl">Members</h2>
-                <div className="mt-4 space-y-3 text-sm">
-                  {members.map((member) => (
-                    <div
-                      key={member.id}
-                      className="rounded-2xl border border-[color:var(--border)] bg-white/70 p-3"
-                    >
-                      <p className="font-medium">
-                        {member.user?.name || member.user?.email}
-                      </p>
-                      <p className="text-xs text-[color:var(--muted)]">
-                        {member.user?.email}
-                      </p>
-                      {membership.role === "ADMIN" ? (
-                        <form
-                          action={changeRoleAction}
-                          className="mt-2 flex items-center gap-2"
-                        >
-                          <input type="hidden" name="orgId" value={params.orgId} />
-                          <input type="hidden" name="returnTo" value={returnTo} />
-                          <input type="hidden" name="userId" value={member.userId} />
-                          <select
-                            name="role"
-                            defaultValue={member.role}
-                            className="rounded-xl border border-[color:var(--border)] bg-white px-2 py-1 text-xs"
-                          >
-                            <option value={Role.ADMIN}>Admin</option>
-                            <option value={Role.MANAGER}>Manager</option>
-                            <option value={Role.MEMBER}>Member</option>
-                          </select>
-                          <button
-                            type="submit"
-                            className="rounded-full border border-[color:var(--border)] px-2 py-1 text-xs"
-                          >
-                            Update
-                          </button>
-                        </form>
-                      ) : (
-                        <p className="mt-2 text-xs text-[color:var(--muted)]">
-                          Role: {member.role}
-                        </p>
-                      )}
-                    </div>
+            {canAdminister ? (
+              <Field label="Assign to" htmlFor="assign">
+                <select id="assign" name="assignedToUserId" defaultValue="" className="select">
+                  <option value="">Unassigned</option>
+                  {members.map((m) => (
+                    <option key={m.id} value={m.userId}>
+                      {m.user.name || m.user.email}
+                      {m.userId === userId ? " (you)" : ""}
+                    </option>
                   ))}
-                </div>
-                {roleError ? (
-                  <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
-                    {roleError}
-                  </p>
-                ) : null}
-              </section>
+                </select>
+              </Field>
             ) : (
-              <section className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--surface)] p-6">
-                <h2 className="font-display text-xl">Members</h2>
-                <p className="mt-3 text-sm text-[color:var(--muted)]">
-                  Member rosters are visible to admins and managers only.
-                </p>
-              </section>
+              <input type="hidden" name="assignedToUserId" value="" />
             )}
-          </aside>
-        </div>
+
+            <SubmitButton className="btn btn-primary w-full" pendingLabel="Creating…">
+              Create task
+            </SubmitButton>
+          </form>
+        </Card>
       </div>
     </div>
   );
 }
+
+export const dynamic = "force-dynamic";

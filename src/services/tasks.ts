@@ -4,6 +4,7 @@ import type { TaskPriority, TaskStatus } from "@prisma/client";
 
 import { prisma } from "@/server/db";
 import { NotFoundError } from "@/server/errors";
+import type { TaskSort } from "@/server/services/tasks";
 import {
   createTask as createTaskRecord,
   deleteTask as deleteTaskRecord,
@@ -27,6 +28,7 @@ type ListTasksInput = {
   filters?: TaskFilters;
   page?: number;
   limit?: number;
+  sort?: TaskSort;
 };
 
 type CreateTaskInput = {
@@ -74,6 +76,7 @@ export const taskService = {
 
     return listTaskRecords({
       orgId: input.orgId,
+      sort: input.sort,
       page: input.page,
       pageSize: input.limit,
       status: input.filters?.status,
